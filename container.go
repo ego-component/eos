@@ -1,6 +1,8 @@
 package eos
 
 import (
+	"strings"
+
 	"github.com/gotomicro/ego/core/econf"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -48,6 +50,9 @@ func (c *Container) Build(options ...BuildOption) *Component {
 	// 初始化默认Storage实例
 	if c.config.Bucket != "" {
 		// 如果根配置下设置了 bucket，则用此来初始化默认Storage
+		if c.config.BucketConfig.Prefix != "" {
+			c.config.BucketConfig.Prefix = strings.Trim(c.config.BucketConfig.Prefix, "/") + "/"
+		}
 		defaultBucketCfg := c.config.BucketConfig
 		s, err := newStorage(defaultBucketCfg.Bucket, &defaultBucketCfg, c.logger.With(elog.String("bucket", defaultBucketCfg.Bucket)))
 		if err != nil {
@@ -70,6 +75,10 @@ func (c *Container) Build(options ...BuildOption) *Component {
 		singleBucketCfg := c.config.BucketConfig
 		if err := econf.UnmarshalKey(key, &singleBucketCfg); err != nil {
 			elog.Panic("Single bucket unmarshalKey fail", elog.String("key", key), elog.FieldErr(err))
+		}
+		// 如果根配置下设置了 bucket，则用此来初始化默认Storage
+		if singleBucketCfg.Prefix != "" {
+			singleBucketCfg.Prefix = strings.Trim(c.config.BucketConfig.Prefix, "/") + "/"
 		}
 		s, err := newStorage(key, &singleBucketCfg, c.logger.With(elog.String("bucket", key)))
 		if err != nil {

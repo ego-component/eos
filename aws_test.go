@@ -29,10 +29,9 @@ var (
 	awsCmp *Component
 )
 
-func init() {
-	confs := `
-[eos]
-debug = true
+var s3Confs = `
+[eos.s3]
+debug = false
 storageType = "s3"
 s3HttpTransportMaxConnsPerHost = 100
 s3HttpTransportIdleConnTimeout = "90s"
@@ -43,39 +42,39 @@ bucket = "%s"
 s3ForcePathStyle = true 
 region = "%s"
 ssl = false
-shards = []
-enableCompressor = true
-compressType = "gzip"
+shards = [%s]
 compressLimit = 0
+prefix = "abc-01"
+enableCompressor = %t
+compressType = "%s"
 `
-	confs = fmt.Sprintf(confs, os.Getenv("AK_ID"), os.Getenv("AK_SECRET"), os.Getenv("ENDPOINT"), os.Getenv("BUCKET"), os.Getenv("REGION"))
-	if err := econf.LoadFromReader(strings.NewReader(confs), toml.Unmarshal); err != nil {
+
+func init() {
+	awsCmp = newS3Cmp(os.Getenv("BUCKET"), "", true, "gzip")
+}
+
+func newS3Cmp(bucket string, shards string, enableCompressor bool, compressType string) *Component {
+	newConfs := fmt.Sprintf(s3Confs, os.Getenv("AK_ID"), os.Getenv("AK_SECRET"), os.Getenv("ENDPOINT"),
+		bucket, os.Getenv("REGION"), shards, enableCompressor, compressType)
+	if err := econf.LoadFromReader(strings.NewReader(newConfs), toml.Unmarshal); err != nil {
 		panic(err)
 	}
-	cmp := Load("eos").Build()
-
-	awsCmp = cmp
+	cmp := Load("eos.s3").Build()
+	return cmp
 }
 
 func TestS3_GetBucketName(t *testing.T) {
+	bucketShard := os.Getenv("BUCKET_SHARD")
+	cmp := newS3Cmp(bucketShard, `"abcdefghijklmnopqr", "stuvwxyz0123456789"`, true, "gzip")
+
 	ctx := context.TODO()
-	bucketNamePrefix := os.Getenv("BUCKET")
-	awsCmp = Load("eos").Build()
-	bn, err := awsCmp.GetBucketName(ctx, "fasdfsfsfsafsf")
+	bn, err := cmp.GetBucketName(ctx, "fasdfsfsfsafsf")
 	assert.NoError(t, err)
-	assert.Equal(t, bucketNamePrefix+"-abcdefghijklmnopqr", bn)
+	assert.Equal(t, bucketShard+"-abcdefghijklmnopqr", bn)
 
-	bn, err = awsCmp.GetBucketName(ctx, "19999999")
+	bn, err = cmp.GetBucketName(ctx, "19999999")
 	assert.NoError(t, err)
-	assert.Equal(t, bucketNamePrefix+"-stuvwxyz0123456789", bn)
-
-	// awsCmp = Load("eos").Build(WithBucket("test-bucket"), WithShards([]string{"abcdefghi", "jklmnopqrstuvwxyz0123456789"}))
-	// bn, err = awsCmp.GetBucketName(ctx, "fdsafaddafa")
-	// assert.NoError(t, err)
-	// assert.Equal(t, "test-bucket-abcdefghi", bn)
-	// bn, err = awsCmp.GetBucketName(ctx, "fdsafaddafa1")
-	// assert.NoError(t, err)
-	// assert.Equal(t, "test-bucket-jklmnopqrstuvwxyz0123456789", bn)
+	assert.Equal(t, bucketShard+"-stuvwxyz0123456789", bn)
 }
 
 func TestS3_Put(t *testing.T) {
@@ -85,16 +84,7 @@ func TestS3_Put(t *testing.T) {
 	meta["length"] = strconv.Itoa(S3ExpectLength)
 
 	err := awsCmp.Put(ctx, S3Guid, strings.NewReader(S3Content), meta)
-	if err != nil {
-		t.Log("aws put error", err)
-		t.Fail()
-	}
-
-	// err = awsCmp.Put(ctx, S3Guid, bytes.NewReader([]byte(S3Content)), meta)
-	// if err != nil {
-	// 	t.Log("aws put error", err)
-	// 	t.Fail()
-	// }
+	assert.NoError(t, err)
 }
 
 func TestS3_GetWithMeta(t *testing.T) {
@@ -102,20 +92,14 @@ func TestS3_GetWithMeta(t *testing.T) {
 	attributes := make([]string, 0)
 	attributes = append(attributes, "head")
 	res, meta, err := awsCmp.GetWithMeta(ctx, S3Guid, attributes)
-	if err != nil {
-		t.Fatal("aws get content as reader fail, err:", err)
-	}
+	assert.NoError(t, err)
 	defer res.Close()
 	byteRes, _ := ioutil.ReadAll(res)
-	if string(byteRes) != S3Content {
-		t.Fatal("aws get as reader, readAll error")
-	}
+	assert.Equal(t, S3Content, string(byteRes))
 
 	head, err := strconv.Atoi(meta["head"])
-	if err != nil || head != S3ExpectHead {
-		t.Log("aws get head fail, res:", res, "err:", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, S3ExpectHead, head)
 }
 
 func TestS3_CompressAndPut(t *testing.T) {
@@ -125,131 +109,121 @@ func TestS3_CompressAndPut(t *testing.T) {
 	meta["length"] = strconv.Itoa(S3ExpectLength)
 
 	err := awsCmp.PutAndCompress(ctx, S3CompressGUID, strings.NewReader(S3CompressContent), meta)
-	if err != nil {
-		t.Log("aws put error", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
 
 	err = awsCmp.PutAndCompress(ctx, S3CompressGUID, bytes.NewReader([]byte(S3CompressContent)), meta)
-	if err != nil {
-		t.Log("aws put error", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
 }
 
 func TestS3_Head(t *testing.T) {
+	cmp := newS3Cmp(os.Getenv("BUCKET"), "", false, "")
 	ctx := context.TODO()
-	attributes := make([]string, 0)
-	attributes = append(attributes, "head", "Content-Length")
+	const meta1Key = "x-sm-meta1"
+	const meta2Key = "x-sm-meta2"
+	const meta1Val = "meta1-val"
+	const meta2Val = "meta2-val"
+
+	attributes := []string{"head", "Content-Length", meta1Key, meta2Key}
+
 	var res map[string]string
 	var err error
-	var head int
-	var length int
+	headGuid := "test-head"
 
-	res, err = awsCmp.Head(ctx, S3Guid, attributes)
+	obj := "123456"
+	err = cmp.Put(ctx, headGuid, strings.NewReader(obj), map[string]string{
+		meta1Key: meta1Val,
+		meta2Key: meta2Val,
+	})
+	assert.NoError(t, err)
+
+	res, err = cmp.Head(ctx, headGuid, attributes)
 	if err != nil {
 		t.Log("aws head error", err)
 		t.Fail()
 	}
 
-	head, err = strconv.Atoi(res["head"])
-	if err != nil || head != S3ExpectHead {
-		t.Log("aws get head fail, res:", res, "err:", err)
-		t.Fail()
-	}
+	// head, err = strconv.Atoi(res["head"])
+	// if err != nil || head != S3ExpectHead {
+	// 	t.Log("aws get head fail, res:", res, "err:", err)
+	// 	t.Fail()
+	// }
 
 	attributes = append(attributes, "length")
-	res, err = awsCmp.Head(ctx, S3Guid, attributes)
-	if err != nil {
-		t.Log("aws head error", err)
-		t.Fail()
-	}
+	res, err = cmp.Head(ctx, headGuid, attributes)
+	assert.NoError(t, err)
 
-	head, err = strconv.Atoi(res["head"])
-	length, err = strconv.Atoi(res["length"])
+	assert.Equal(t, meta1Val, res[meta1Key])
+	assert.Equal(t, meta2Val, res[meta2Key])
+
+	// head, err = strconv.Atoi(res["head"])
+	// length, err = strconv.Atoi(res["length"])
 	contentLength, err := strconv.Atoi(res["Content-Length"])
-	if err != nil || head != S3ExpectHead || length != S3ExpectLength || contentLength != S3ExpectLength {
-		t.Log("aws get head fail, res:", res, "err:", err)
-		t.Fail()
-	}
+	assert.Equal(t, len(obj), contentLength)
 }
 
 func TestS3_Get(t *testing.T) {
 	ctx := context.TODO()
 	res, err := awsCmp.Get(ctx, S3Guid)
-	if err != nil || res != S3Content {
-		t.Log("aws get S3Content fail, res:", res, "err:", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, S3Content, res)
 
 	res1, err := awsCmp.GetAsReader(ctx, S3Guid)
-	if err != nil {
-		t.Fatal("aws get content as reader fail, err:", err)
-	}
+	assert.NoError(t, err)
 	defer res1.Close()
 
 	byteRes, _ := ioutil.ReadAll(res1)
-	if string(byteRes) != S3Content {
-		t.Fatal("aws get as reader, readAll error")
-	}
+	assert.Equal(t, S3Content, string(byteRes))
 }
 
 // compressed content
 func TestS3_GetAndDecompress(t *testing.T) {
 	ctx := context.TODO()
 	res, err := awsCmp.GetAndDecompress(ctx, S3CompressGUID)
-	if err != nil || res != S3CompressContent {
-		t.Log("aws get S3 conpressed Content fail, res:", res, "err:", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, S3CompressContent, res)
 
 	res1, err := awsCmp.GetAndDecompressAsReader(ctx, S3CompressGUID)
-	if err != nil {
-		t.Fatal("aws get compressed content as reader fail, err:", err)
-	}
+	assert.NoError(t, err)
 
-	byteRes, error := ioutil.ReadAll(res1)
-	if string(byteRes) != S3CompressContent || error != nil {
-		t.Fatal("aws get as reader, readAll error0", string(byteRes), error)
-	}
+	byteRes, err := ioutil.ReadAll(res1)
+	assert.NoError(t, err)
+	assert.Equal(t, S3CompressContent, string(byteRes))
 }
 
 // non-compressed content
 func TestS3_GetAndDecompress2(t *testing.T) {
 	ctx := context.TODO()
+
+	err := awsCmp.Put(ctx, S3Guid, strings.NewReader(S3Content), nil)
+	assert.NoError(t, err)
+
 	res, err := awsCmp.GetAndDecompress(ctx, S3Guid)
-	if err != nil || res != S3Content {
-		t.Log("aws get S3Content fail, res:", res, "err:", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, S3Content, res)
 
 	res1, err := awsCmp.GetAndDecompressAsReader(ctx, S3Guid)
-	if err != nil {
-		t.Fatal("aws get content as reader fail, err:", err)
-	}
+	assert.NoError(t, err)
 
 	byteRes, _ := ioutil.ReadAll(res1)
-	if string(byteRes) != S3Content {
-		t.Fatal("aws get as reader, readAll error")
-	}
+	assert.Equal(t, S3Content, string(byteRes))
 }
 
 func TestS3_SignURL(t *testing.T) {
 	ctx := context.TODO()
 	res, err := awsCmp.SignURL(ctx, S3Guid, 60)
-	if err != nil {
-		t.Log("oss signUrl fail, res:", res, "err:", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
+	assert.NotEmpty(t, res)
 }
 
 func TestS3_ListObject(t *testing.T) {
 	ctx := context.TODO()
+
+	err := awsCmp.Put(ctx, S3Guid, strings.NewReader(S3Content), nil)
+	assert.NoError(t, err)
+
 	res, err := awsCmp.ListObject(ctx, S3Guid, S3Guid[0:4], "", 10, "")
-	if err != nil || len(res) == 0 {
-		t.Log("aws list objects fail, res:", res, "err:", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
+	assert.NotEqual(t, 0, len(res))
 }
 
 func TestS3_Del(t *testing.T) {
@@ -264,97 +238,67 @@ func TestS3_Del(t *testing.T) {
 func TestS3_GetNotExist(t *testing.T) {
 	ctx := context.TODO()
 	res1, err := awsCmp.Get(ctx, S3Guid+"123")
-	if res1 != "" || err != nil {
-		t.Log("aws get not exist key fail, res:", res1, "err:", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
+	assert.Empty(t, res1)
 
 	attributes := make([]string, 0)
 	attributes = append(attributes, "head")
 	res2, err := awsCmp.Head(ctx, S3Guid+"123", attributes)
-	if res2 != nil || err != nil {
-		t.Log("aws head not exist key fail, res:", res2, "err:", err, err.Error())
-		t.Fail()
-	}
+	assert.NoError(t, err)
+	assert.Empty(t, res2)
 }
 
 func TestS3_DelMulti(t *testing.T) {
 	ctx := context.TODO()
 	keys := []string{"aaa", "bbb", "ccc"}
 	for _, key := range keys {
-		awsCmp.Put(ctx, key, strings.NewReader("2333333"), nil)
+		err := awsCmp.Put(ctx, key, strings.NewReader("2333333"), nil)
+		assert.NoError(t, err)
 	}
 
 	err := awsCmp.DelMulti(ctx, keys)
-	if err != nil {
-		t.Log("aws del multi keys fail, err:", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
 
 	for _, key := range keys {
 		res, err := awsCmp.Get(ctx, key)
-		if res != "" || err != nil {
-			t.Logf("key:%s should not be exist", key)
-			t.Fail()
-		}
+		assert.NoError(t, err)
+		assert.Empty(t, res)
 	}
 }
 
 func TestS3_Range(t *testing.T) {
+	cmp := newS3Cmp(os.Getenv("BUCKET"), "", false, "")
+
 	ctx := context.TODO()
+	cmp.Del(ctx, guid)
 	meta := make(map[string]string)
-	err := awsCmp.Put(ctx, guid, strings.NewReader("123456"), meta)
-	if err != nil {
-		t.Log("aws put error", err)
-		t.Fail()
-	}
+	err := cmp.Put(ctx, guid, strings.NewReader("123456"), meta)
+	assert.NoError(t, err)
 
-	res, err := awsCmp.Range(ctx, guid, 3, 3)
-	if err != nil {
-		t.Log("aws range error", err)
-		t.Fail()
-	}
+	res, err := cmp.Range(ctx, guid, 3, 3)
+	assert.NoError(t, err)
 
-	byteRes, _ := ioutil.ReadAll(res)
-	if string(byteRes) != "456" {
-		t.Fatalf("aws range as reader, expect:%s, but is %s", "456", string(byteRes))
-	}
+	byteRes, err := ioutil.ReadAll(res)
+	assert.NoError(t, err)
+	assert.Equal(t, "456", string(byteRes))
 }
 
 func TestS3_Exists(t *testing.T) {
 	ctx := context.TODO()
 	meta := make(map[string]string)
 	err := awsCmp.Put(ctx, guid, strings.NewReader("123456"), meta)
-	if err != nil {
-		t.Log("aws put error", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
 
 	// test exists
 	ok, err := awsCmp.Exists(ctx, guid)
-	if err != nil {
-		t.Log("aws Exists error", err)
-		t.Fail()
-	}
-	if !ok {
-		t.Log("aws must Exists, but return not exists")
-		t.Fail()
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, true, ok)
 
 	err = awsCmp.Del(ctx, guid)
-	if err != nil {
-		t.Log("aws del key fail, err:", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
 
 	// test not exists
 	ok, err = awsCmp.Exists(ctx, guid)
-	if err != nil {
-		t.Log("aws Exists error", err)
-		t.Fail()
-	}
-	if ok {
-		t.Log("aws must not Exists, but return exists")
-		t.Fail()
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, false, ok)
 }

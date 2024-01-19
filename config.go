@@ -25,6 +25,8 @@ type BucketConfig struct {
 	Endpoint string
 	// Required Bucket name
 	Bucket string
+	// Prefix sets a default global prefix, if not empty, this prefix will automatically be added to all keys by default
+	Prefix string
 	// Optional, choose which bucket to use based on the last character of the key,
 	// if bucket is 'content', shards is ['abc', 'edf'],
 	// then the last character of the key with a/b/c will automatically use the content-abc bucket, and vice versa

@@ -48,7 +48,11 @@ func newStorage(name string, cfg *BucketConfig, logger *elog.Component) (Client,
 	storageType := strings.ToLower(cfg.StorageType)
 
 	if storageType == StorageTypeOSS {
-		client, err := oss.New(cfg.Endpoint, cfg.AccessKeyID, cfg.AccessKeySecret)
+		var opts = []oss.ClientOption{oss.HTTPClient(newHttpClient(name, cfg, logger))}
+		if cfg.Debug {
+			opts = append(opts, oss.SetLogLevel(oss.Debug))
+		}
+		client, err := oss.New(cfg.Endpoint, cfg.AccessKeyID, cfg.AccessKeySecret, opts...)
 		if err != nil {
 			return nil, err
 		}
@@ -116,26 +120,7 @@ func newStorage(name string, cfg *BucketConfig, logger *elog.Component) (Client,
 			slog.Default().Enabled(context.Background(), slog.LevelDebug)
 		}
 
-		config.HTTPClient = &http.Client{
-			Timeout: time.Second * time.Duration(cfg.S3HttpTimeoutSecs),
-		}
-		var tp http.RoundTripper = createTransport(cfg)
-		if cfg.EnableMetricInterceptor {
-			tp = metricInterceptor(name, cfg, logger, tp)
-		}
-		if cfg.EnableTraceInterceptor {
-			tp = traceLogReqIdInterceptor(name, cfg, logger, tp)
-			if cfg.EnableClientTrace {
-				tp = otelhttp.NewTransport(tp,
-					otelhttp.WithClientTrace(func(ctx context.Context) *httptrace.ClientTrace {
-						return otelhttptrace.NewClientTrace(ctx)
-					}))
-			} else {
-				tp = otelhttp.NewTransport(tp)
-			}
-		}
-		tp = fixedInterceptor(name, cfg, logger, tp)
-		config.HTTPClient.Transport = tp
+		config.HTTPClient = newHttpClient(name, cfg, logger)
 		service := s3.New(session.Must(session.NewSession(config)))
 
 		var s3Client *S3
@@ -169,6 +154,31 @@ func newStorage(name string, cfg *BucketConfig, logger *elog.Component) (Client,
 	} else {
 		return nil, fmt.Errorf("unknown StorageType:\"%s\", only supports oss,s3", cfg.StorageType)
 	}
+}
+
+func newHttpClient(name string, cfg *BucketConfig, logger *elog.Component) *http.Client {
+	httpCli := &http.Client{
+		Timeout: time.Second * time.Duration(cfg.S3HttpTimeoutSecs),
+	}
+	var tp http.RoundTripper = createTransport(cfg)
+	if cfg.EnableMetricInterceptor {
+		tp = metricInterceptor(name, cfg, logger, tp)
+	}
+	if cfg.EnableTraceInterceptor {
+		tp = traceLogReqIdInterceptor(name, cfg, logger, tp)
+		if cfg.EnableClientTrace {
+			tp = otelhttp.NewTransport(tp,
+				otelhttp.WithClientTrace(func(ctx context.Context) *httptrace.ClientTrace {
+					return otelhttptrace.NewClientTrace(ctx)
+				}))
+		} else {
+			tp = otelhttp.NewTransport(tp)
+		}
+	}
+	tp = fixedInterceptor(name, cfg, logger, tp)
+	httpCli.Transport = tp
+
+	return httpCli
 }
 
 func createTransport(config *BucketConfig) *http.Transport {

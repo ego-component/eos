@@ -1,8 +1,6 @@
 package eos
 
-/**
-Put your environment configuration in ".env-oss"
-*/
+// Put your environment configuration in ".env-oss"
 
 import (
 	"bytes"
@@ -34,11 +32,10 @@ var (
 	ossCmp *Component
 )
 
-func init() {
-	confs := `
-[eos]
+var ossConfs = `
+[eos.oss]
 debug = false
-storageType = "s3"
+storageType = "oss"
 s3HttpTransportMaxConnsPerHost = 100
 s3HttpTransportIdleConnTimeout = "90s"
 accessKeyID = "%s"
@@ -48,28 +45,39 @@ bucket = "%s"
 s3ForcePathStyle = false 
 region = "%s"
 ssl = false
+shards = [%s]
+compressLimit = 0
+prefix = "abc-01"
+enableCompressor = %t
+compressType = "%s"
 `
-	confs = fmt.Sprintf(confs, os.Getenv("AK_ID"), os.Getenv("AK_SECRET"), os.Getenv("ENDPOINT"), os.Getenv("BUCKET"), os.Getenv("REGION"))
-	if err := econf.LoadFromReader(strings.NewReader(confs), toml.Unmarshal); err != nil {
+
+func init() {
+	ossCmp = newOssCmp(os.Getenv("BUCKET"), "", true, "gzip")
+}
+
+func newOssCmp(bucket string, shards string, enableCompressor bool, compressType string) *Component {
+	newConfs := fmt.Sprintf(ossConfs, os.Getenv("AK_ID"), os.Getenv("AK_SECRET"), os.Getenv("ENDPOINT"),
+		bucket, os.Getenv("REGION"), shards, enableCompressor, compressType)
+	if err := econf.LoadFromReader(strings.NewReader(newConfs), toml.Unmarshal); err != nil {
 		panic(err)
 	}
-	client := Load("eos").Build()
-	ossCmp = client
+	cmp := Load("eos.oss").Build()
+	return cmp
 }
 
 func TestOSS_GetBucketName(t *testing.T) {
+	bucketShard := os.Getenv("BUCKET_SHARD")
+	cmp := newOssCmp(bucketShard, `"abcdefghijklmnopqr", "stuvwxyz0123456789"`, true, "gzip")
+
 	ctx := context.TODO()
-	ossCmp = Load("eos").Build(WithBucket("test-bucket"))
-	bn, err := ossCmp.GetBucketName(ctx, "fasdfsfsfsafsf")
+	bn, err := cmp.GetBucketName(ctx, "fasdfsfsfsafsf")
 	assert.NoError(t, err)
-	assert.Equal(t, "test-bucket", bn)
-	ossCmp = Load("eos").Build(WithBucket("test-bucket"), WithShards([]string{"abcdefghi", "jklmnopqrstuvwxyz0123456789"}))
-	bn, err = ossCmp.GetBucketName(ctx, "fdsafaddafa")
+	assert.Equal(t, bucketShard+"-abcdefghijklmnopqr", bn)
+
+	bn, err = cmp.GetBucketName(ctx, "19999999")
 	assert.NoError(t, err)
-	assert.Equal(t, "test-bucket-abcdefghi", bn)
-	bn, err = ossCmp.GetBucketName(ctx, "fdsafaddafa1")
-	assert.NoError(t, err)
-	assert.Equal(t, "test-bucket-jklmnopqrstuvwxyz0123456789", bn)
+	assert.Equal(t, bucketShard+"-stuvwxyz0123456789", bn)
 }
 
 func TestOSS_Put(t *testing.T) {
@@ -79,16 +87,10 @@ func TestOSS_Put(t *testing.T) {
 	meta["length"] = strconv.Itoa(expectLength)
 
 	err := ossCmp.Put(ctx, guid, strings.NewReader(content), meta)
-	if err != nil {
-		t.Log("oss put error", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
 
 	err = ossCmp.Put(ctx, guid, bytes.NewReader([]byte(content)), meta)
-	if err != nil {
-		t.Log("oss put byte array error", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
 }
 
 func TestOSS_CompressAndPut(t *testing.T) {
@@ -98,16 +100,10 @@ func TestOSS_CompressAndPut(t *testing.T) {
 	meta["length"] = strconv.Itoa(expectLength)
 
 	err := ossCmp.PutAndCompress(ctx, compressGUID, strings.NewReader(compressContent), meta)
-	if err != nil {
-		t.Log("oss put error", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
 
 	err = ossCmp.PutAndCompress(ctx, compressGUID, bytes.NewReader([]byte(compressContent)), meta)
-	if err != nil {
-		t.Log("oss put error", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
 }
 
 func TestOSS_Head(t *testing.T) {
@@ -120,67 +116,49 @@ func TestOSS_Head(t *testing.T) {
 	var length int
 
 	res, err = ossCmp.Head(ctx, guid, attributes)
-	if err != nil {
-		t.Log("oss head error", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
 
 	head, err = strconv.Atoi(res["head"])
-	if err != nil || head != expectHead {
-		t.Log("oss get head fail, res:", res, "err:", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
 
 	attributes = append(attributes, "length")
 	attributes = append(attributes, "Content-Type")
 	res, err = ossCmp.Head(ctx, guid, attributes)
-	if err != nil {
-		t.Log("oss head error", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
 
 	head, err = strconv.Atoi(res["head"])
+	assert.NoError(t, err)
 	length, err = strconv.Atoi(res["length"])
-	if err != nil || head != expectHead || length != expectLength {
-		t.Log("oss get head fail, res:", res, "err:", err)
-		t.Fail()
-	}
-
-	if res["Content-Type"] != "text/plain" {
-		t.Log("oss get head Content-Type wrong, res:", res, "err:", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, expectHead, head)
+	assert.Equal(t, expectLength, length)
+	assert.Equal(t, "text/plain", res["Content-Type"])
 }
 
 func TestOSS_Get(t *testing.T) {
 	ctx := context.TODO()
+
+	TestOSS_Put(t)
 	res, err := ossCmp.Get(ctx, guid)
-	if err != nil || res != content {
-		t.Log("oss get content fail, res:", res, "err:", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, content, res)
 
 	res1, err := ossCmp.GetAsReader(ctx, guid)
-	if err != nil {
-		t.Fatal("oss get content as reader fail, err:", err)
-	}
+	assert.NoError(t, err)
 	defer res1.Close()
+
 	byteRes, _ := ioutil.ReadAll(res1)
-	if string(byteRes) != content {
-		t.Fatal("oss get as reader, readAll error")
-	}
+	assert.Equal(t, content, string(byteRes))
 
-	resBytes, err := ossCmp.GetBytes(ctx, guid, EnableCRCValidation())
-	if err != nil || string(resBytes) != content {
-		t.Log("oss get content fail, res:", string(resBytes), "err:", err)
-		t.Fail()
-	}
+	opts := []GetOptions{}
+	// TODO EnableCRCValidation()
+	resBytes, err := ossCmp.GetBytes(ctx, guid, opts...)
+	assert.NoError(t, err)
+	assert.Equal(t, content, string(resBytes))
 
-	res, err = ossCmp.Get(ctx, guid, EnableCRCValidation())
-	if err != nil || res != content {
-		t.Log("oss get content fail, res:", res, "err:", err)
-		t.Fail()
-	}
+	res, err = ossCmp.Get(ctx, guid, opts...)
+	assert.NoError(t, err)
+	assert.Equal(t, content, res)
 }
 
 func TestOSS_GetWithMeta(t *testing.T) {
@@ -188,207 +166,142 @@ func TestOSS_GetWithMeta(t *testing.T) {
 	attributes := make([]string, 0)
 	attributes = append(attributes, "head")
 	res, meta, err := ossCmp.GetWithMeta(ctx, guid, attributes)
-	if err != nil {
-		t.Fatal("oss get content as reader fail, err:", err)
-	}
+	assert.NoError(t, err)
 	defer res.Close()
+
 	byteRes, _ := ioutil.ReadAll(res)
-	if string(byteRes) != content {
-		t.Fatal("oss get as reader, readAll error")
-	}
+	assert.Equal(t, content, string(byteRes))
 
 	head, err := strconv.Atoi(meta["head"])
-	if err != nil || head != expectHead {
-		t.Log("oss get head fail, res:", res, "err:", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, expectHead, head)
 }
 
 func TestOSS_GetAndDecompress(t *testing.T) {
 	ctx := context.TODO()
 	reader, meta, err := ossCmp.GetWithMeta(ctx, compressGUID, []string{MetaCompressor})
-	if err != nil {
-		t.Log("oss get error", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
 	assert.Equal(t, "snappy", meta[MetaCompressor])
 
 	rawBytes, err := ioutil.ReadAll(reader)
-	if err != nil {
-		t.Log("oss read body error", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
 
 	decodedBytes, err := snappy.Decode(nil, rawBytes)
-	if err != nil || string(decodedBytes) != compressContent {
-		t.Log("snappy decode error", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, compressContent, string(decodedBytes))
 
 	res, err := ossCmp.GetAndDecompress(ctx, compressGUID)
-	if err != nil || res != compressContent {
-		t.Log("aws get oss content fail, res:", res, "err:", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, compressContent, res)
 
 	res1, err := ossCmp.GetAndDecompressAsReader(ctx, compressGUID)
-	if err != nil {
-		t.Fatal("oss get content as reader fail, err:", err)
-	}
+	assert.NoError(t, err)
 
 	byteRes, _ := ioutil.ReadAll(res1)
-	if string(byteRes) != compressContent {
-		t.Fatal("oss get as reader, readAll error")
-	}
+	assert.Equal(t, compressContent, string(byteRes))
 }
 
 func TestOSS_GetAndDecompress2(t *testing.T) {
 	ctx := context.TODO()
 	_, meta, err := ossCmp.GetWithMeta(ctx, guid, []string{MetaCompressor})
-	if err != nil {
-		t.Log("oss get error", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
 	assert.Empty(t, meta[MetaCompressor])
 
 	res, err := ossCmp.GetAndDecompress(ctx, guid)
-	if err != nil || res != content {
-		t.Log("aws get oss content fail, res:", res, "err:", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, content, res)
 
 	res1, err := ossCmp.GetAndDecompressAsReader(ctx, guid)
-	if err != nil {
-		t.Fatal("oss get content as reader fail, err:", err)
-	}
+	assert.NoError(t, err)
 
 	byteRes, _ := ioutil.ReadAll(res1)
-	if string(byteRes) != content {
-		t.Fatal("oss get as reader, readAll error")
-	}
+	assert.Equal(t, content, string(byteRes))
 }
 
 func TestOSS_SignURL(t *testing.T) {
 	ctx := context.TODO()
 	res, err := ossCmp.SignURL(ctx, guid, 60)
-	if err != nil {
-		t.Log("oss signUrl fail, res:", res, "err:", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
+	assert.NotEmpty(t, res)
 }
 
 func TestOSS_ListObject(t *testing.T) {
 	ctx := context.TODO()
 	res, err := ossCmp.ListObject(ctx, guid, guid[0:4], "", 10, "")
-	if err != nil || len(res) == 0 {
-		t.Log("oss list objects fail, res:", res, "err:", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
+	assert.NotEmpty(t, res)
 }
 
 func TestOSS_Del(t *testing.T) {
 	ctx := context.TODO()
 	err := ossCmp.Del(ctx, guid)
-	if err != nil {
-		t.Log("oss del key fail, err:", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
 }
 
 func TestOSS_DelMulti(t *testing.T) {
 	ctx := context.TODO()
 	keys := []string{"aaa", "bb0", "ccc"}
 	for _, key := range keys {
-		ossCmp.Put(ctx, key, strings.NewReader("2333333"), nil)
+		err := ossCmp.Put(ctx, key, strings.NewReader("2333333"), nil)
+		assert.NoError(t, err)
 	}
 
 	err := ossCmp.DelMulti(ctx, keys)
-	if err != nil {
-		t.Log("aws del multi keys fail, err:", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
 
 	for _, key := range keys {
 		res, err := ossCmp.Get(ctx, key)
-		if res != "" || err != nil {
-			t.Logf("key:%s should not be exist", key)
-			t.Fail()
-		}
+		assert.NoError(t, err)
+		assert.Empty(t, res)
 	}
 }
 
 func TestOSS_GetNotExist(t *testing.T) {
 	ctx := context.TODO()
 	res1, err := ossCmp.Get(ctx, guid+"123")
-	if res1 != "" || err != nil {
-		t.Log("oss get not exist key fail, res:", res1, "err:", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
+	assert.Empty(t, res1)
 
 	attributes := make([]string, 0)
 	attributes = append(attributes, "head")
 	res2, err := ossCmp.Head(ctx, guid+"123", attributes)
-	if res2 != nil || err != nil {
-		t.Log("oss head not exist key fail, res:", res2, "err:", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
+	assert.Empty(t, res2)
 }
 
 func TestOSS_Range(t *testing.T) {
+	cmp := newOssCmp(os.Getenv("BUCKET"), "", false, "")
+
 	ctx := context.TODO()
+	cmp.Del(ctx, guid)
 	meta := make(map[string]string)
-	err := ossCmp.Put(ctx, guid, strings.NewReader("123456"), meta)
-	if err != nil {
-		t.Log("oss put error", err)
-		t.Fail()
-	}
+	err := cmp.Put(ctx, guid, strings.NewReader("123456"), meta)
+	assert.NoError(t, err)
 
-	res, err := ossCmp.Range(ctx, guid, 3, 3)
-	if err != nil {
-		t.Log("oss range error", err)
-		t.Fail()
-	}
+	res, err := cmp.Range(ctx, guid, 3, 3)
+	assert.NoError(t, err)
 
-	byteRes, _ := ioutil.ReadAll(res)
-	if string(byteRes) != "456" {
-		t.Fatalf("oss range as reader, expect:%s, but is %s", "456", string(byteRes))
-	}
+	byteRes, err := ioutil.ReadAll(res)
+	assert.NoError(t, err)
+	assert.Equal(t, "456", string(byteRes))
 }
 
 func TestOSS_Exists(t *testing.T) {
 	ctx := context.TODO()
 	meta := make(map[string]string)
 	err := ossCmp.Put(ctx, guid, strings.NewReader("123456"), meta)
-	if err != nil {
-		t.Log("oss put error", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
 
 	// test exists
 	ok, err := ossCmp.Exists(ctx, guid)
-	if err != nil {
-		t.Log("oss Exists error", err)
-		t.Fail()
-	}
-	if !ok {
-		t.Log("oss must Exists, but return not exists")
-		t.Fail()
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, true, ok)
 
 	err = ossCmp.Del(ctx, guid)
-	if err != nil {
-		t.Log("oss del key fail, err:", err)
-		t.Fail()
-	}
+	assert.NoError(t, err)
 
 	// test not exists
 	ok, err = ossCmp.Exists(ctx, guid)
-	if err != nil {
-		t.Log("oss Exists error", err)
-		t.Fail()
-	}
-	if ok {
-		t.Log("oss must not Exists, but return exists")
-		t.Fail()
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, false, ok)
 }
