@@ -47,6 +47,9 @@ compressLimit = 0
 prefix = "abc-01"
 enableCompressor = %t
 compressType = "%s"
+	[eos.s3.buckets.one]
+	bucket = "one"
+	prefix = "abcddd"
 `
 
 func init() {

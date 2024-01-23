@@ -78,7 +78,7 @@ func (c *Container) Build(options ...BuildOption) *Component {
 		}
 		// 如果根配置下设置了 bucket，则用此来初始化默认Storage
 		if singleBucketCfg.Prefix != "" {
-			singleBucketCfg.Prefix = strings.Trim(c.config.BucketConfig.Prefix, "/") + "/"
+			singleBucketCfg.Prefix = strings.Trim(singleBucketCfg.Prefix, "/") + "/"
 		}
 		s, err := newStorage(key, &singleBucketCfg, c.logger.With(elog.String("bucket", key)))
 		if err != nil {
