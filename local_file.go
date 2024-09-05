@@ -27,6 +27,11 @@ type LocalFile struct {
 	meta map[string]map[string]string
 }
 
+func (l *LocalFile) GetClient() any {
+	//TODO implement me
+	return nil
+}
+
 func NewLocalFile(path string) (*LocalFile, error) {
 	err := os.MkdirAll(path, os.ModePerm)
 	return &LocalFile{

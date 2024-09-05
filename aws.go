@@ -27,6 +27,10 @@ type S3 struct {
 	presignClient *s3.PresignClient
 }
 
+func (a *S3) GetClient() any {
+	return a.client
+}
+
 // 返回带prefix的key
 func (a *S3) keyWithPrefix(key string) string {
 	return a.cfg.Prefix + key

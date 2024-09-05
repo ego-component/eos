@@ -25,6 +25,10 @@ type OSS struct {
 	//compressor Compressor
 }
 
+func (ossClient *OSS) GetClient() any {
+	return ossClient.Bucket
+}
+
 // 返回带prefix的key
 func (ossClient *OSS) keyWithPrefix(key string) string {
 	return ossClient.cfg.Prefix + key

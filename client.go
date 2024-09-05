@@ -40,6 +40,7 @@ type Client interface {
 	Range(ctx context.Context, key string, offset int64, length int64) (io.ReadCloser, error)
 	Exists(ctx context.Context, key string) (bool, error)
 	Copy(ctx context.Context, srcKey, dstKey string, options ...CopyOption) error
+	GetClient() any
 }
 
 func newStorage(name string, cfg *BucketConfig, logger *elog.Component) (Client, error) {
