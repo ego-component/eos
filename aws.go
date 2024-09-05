@@ -557,6 +557,12 @@ func getS3Meta(ctx context.Context, attributes []string, metaData map[string]*st
 		if metaData[key] != nil {
 			res[v] = *metaData[key]
 		}
+		// v2新版本不会将其变成大写
+		// 所以需要兼容这块
+		if metaData[v] != nil {
+			res[v] = *metaData[v]
+		}
+
 	}
 	return res
 }

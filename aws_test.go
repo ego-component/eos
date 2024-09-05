@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/BurntSushi/toml"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/gotomicro/ego/core/econf"
 	"github.com/stretchr/testify/assert"
 )
@@ -314,4 +316,46 @@ func TestS3_Exists(t *testing.T) {
 	ok, err = awsCmp.Exists(ctx, guid)
 	assert.NoError(t, err)
 	assert.Equal(t, false, ok)
+}
+
+func TestContainer_Meta(t *testing.T) {
+	conf := `
+[s3]
+storageType = "s3" # oss|s3
+endpoint = ""
+bucket = ""
+s3ForcePathStyle = false
+region = "cn-north-1"
+accessKeyID = ""
+accessKeySecret = ""
+`
+	// 加载配置文件
+	err := econf.LoadFromReader(strings.NewReader(conf), toml.Unmarshal)
+	if err != nil {
+		panic("LoadFromReader fail," + err.Error())
+	}
+	// 构建 eos component
+	s3Build := Load("s3").Build()
+
+	err = s3Build.Put(context.Background(), "hello", bytes.NewReader([]byte("world")), map[string]string{
+		"count": "20",
+	})
+	assert.NoError(t, err)
+
+	s3Client := s3Build.Client("__default__").GetClient().(*s3.Client)
+
+	input := &s3.GetObjectInput{
+		Bucket: aws.String("table"),
+		Key:    aws.String("hello"),
+	}
+	result, err := s3Client.GetObject(context.Background(), input)
+	output := mergeHttpStandardHeaders(&HeadGetObjectOutputWrapper{
+		getObjectOutput: result,
+	})
+	output2 := getS3Meta(context.Background(), []string{"count"}, mergeHttpStandardHeaders(&HeadGetObjectOutputWrapper{
+		getObjectOutput: result,
+	}))
+	fmt.Printf("s3Client--------------->"+"%+v\n", output)
+	fmt.Printf("s3Client--------------->"+"%+v\n", output2)
+	fmt.Printf("err--------------->"+"%+v\n", err)
 }
