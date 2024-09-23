@@ -38,10 +38,44 @@ type Client interface {
 	DelMulti(ctx context.Context, keys []string) error
 	Head(ctx context.Context, key string, meta []string) (map[string]string, error)
 	ListObject(ctx context.Context, key string, prefix string, marker string, maxKeys int, delimiter string) ([]string, error)
+	ListObjectsV2(ctx context.Context, prefix string, options ...ListObjectsV2Option) (*ListObjectsV2Result, error)
 	SignURL(ctx context.Context, key string, expired int64, options ...SignOptions) (string, error)
 	Range(ctx context.Context, key string, offset int64, length int64) (io.ReadCloser, error)
 	Exists(ctx context.Context, key string) (bool, error)
 	Copy(ctx context.Context, srcKey, dstKey string, options ...CopyOption) error
+}
+
+type Object struct {
+	Key          string
+	Size         int64
+	LastModified time.Time
+}
+
+func newObjectFromS3(o *s3.Object) *Object {
+	res := &Object{}
+	if o.Key != nil {
+		res.Key = *o.Key
+	}
+	if o.Size != nil {
+		res.Size = *o.Size
+	}
+	if o.LastModified != nil {
+		res.LastModified = *o.LastModified
+	}
+	return res
+}
+
+func newObjectFromOss(o *oss.ObjectProperties) *Object {
+	return &Object{
+		Key:          o.Key,
+		Size:         o.Size,
+		LastModified: o.LastModified,
+	}
+}
+
+type ListObjectsV2Result struct {
+	Contents              []*Object
+	NextContinuationToken *string
 }
 
 func newStorage(name string, cfg *BucketConfig, logger *elog.Component) (Client, error) {

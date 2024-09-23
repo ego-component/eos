@@ -92,6 +92,10 @@ func (c *Component) ListObject(ctx context.Context, key string, prefix string, m
 	return c.defaultClient.ListObject(ctx, key, prefix, marker, maxKeys, delimiter)
 }
 
+func (c *Component) ListObjectsV2(ctx context.Context, prefix string, options ...ListObjectsV2Option) (*ListObjectsV2Result, error) {
+	return c.defaultClient.ListObjectsV2(ctx, prefix, options...)
+}
+
 func (c *Component) SignURL(ctx context.Context, key string, expired int64, options ...SignOptions) (string, error) {
 	return c.defaultClient.SignURL(ctx, key, expired, options...)
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"github.com/avast/retry-go"
 	"github.com/golang/snappy"
+	"github.com/samber/lo"
 )
 
 var _ Client = (*OSS)(nil)
@@ -361,12 +362,51 @@ func (ossClient *OSS) ListObject(ctx context.Context, key string, prefix string,
 
 	prefix = ossClient.cfg.Prefix + prefix
 	res, err := bucket.ListObjects(oss.Prefix(prefix), oss.Marker(marker), oss.MaxKeys(maxKeys), oss.Delimiter(delimiter), oss.WithContext(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("oss.Bucket.ListObjects: %w", err)
+	}
 	keys := make([]string, 0)
 	for _, v := range res.Objects {
 		keys = append(keys, v.Key)
 	}
 
 	return keys, nil
+}
+
+func (ossClient *OSS) ListObjectsV2(ctx context.Context, prefix string, options ...ListObjectsV2Option) (*ListObjectsV2Result, error) {
+	var opt listObjectsV2Options
+	for _, f := range options {
+		f(&opt)
+	}
+
+	bucket, _, err := ossClient.getBucket(ctx, opt.shardingKey)
+	if err != nil {
+		return nil, err
+	}
+
+	var ossOpts = []oss.Option{
+		oss.Prefix(ossClient.cfg.Prefix + prefix),
+	}
+	if opt.continuationToken != "" {
+		ossOpts = append(ossOpts, oss.ContinuationToken(opt.continuationToken))
+	}
+	if opt.maxKeys > 0 {
+		ossOpts = append(ossOpts, oss.MaxKeys(opt.maxKeys))
+	}
+
+	res, err := bucket.ListObjectsV2(ossOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("oss.Bucket.ListObjectsV2: %w", err)
+	}
+
+	var result = &ListObjectsV2Result{
+		Contents:              lo.Map(res.Objects, func(v oss.ObjectProperties, _ int) *Object { return newObjectFromOss(&v) }),
+		NextContinuationToken: nil,
+	}
+	if res.NextContinuationToken != "" {
+		result.NextContinuationToken = &res.NextContinuationToken
+	}
+	return result, nil
 }
 
 func (ossClient *OSS) SignURL(ctx context.Context, key string, expired int64, options ...SignOptions) (string, error) {
