@@ -132,3 +132,29 @@ type signOptions struct {
 func DefaultSignOptions() *signOptions {
 	return &signOptions{}
 }
+
+type listObjectsV2Options struct {
+	shardingKey       string
+	continuationToken string
+	maxKeys           int
+}
+
+type ListObjectsV2Option func(opt *listObjectsV2Options)
+
+func ListWithShardingKey(key string) ListObjectsV2Option {
+	return func(opt *listObjectsV2Options) {
+		opt.shardingKey = key
+	}
+}
+
+func ListWithContinuationToken(continuationToken string) ListObjectsV2Option {
+	return func(opt *listObjectsV2Options) {
+		opt.continuationToken = continuationToken
+	}
+}
+
+func ListWithMaxKeys(maxKeys int) ListObjectsV2Option {
+	return func(opt *listObjectsV2Options) {
+		opt.maxKeys = maxKeys
+	}
+}

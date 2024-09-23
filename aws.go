@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/golang/snappy"
+	"github.com/samber/lo"
 )
 
 var _ Client = (*S3)(nil)
@@ -445,6 +446,41 @@ func (a *S3) ListObject(ctx context.Context, key string, prefix string, marker s
 	}
 
 	return keys, nil
+}
+
+func (a *S3) ListObjectsV2(ctx context.Context, prefix string, options ...ListObjectsV2Option) (*ListObjectsV2Result, error) {
+	var opt listObjectsV2Options
+	for _, f := range options {
+		f(&opt)
+	}
+
+	bucketName, _, err := a.getBucketAndKey(ctx, opt.shardingKey)
+	if err != nil {
+		return nil, err
+	}
+
+	var input = s3.ListObjectsV2Input{}
+	input.SetBucket(bucketName)
+	input.SetPrefix(a.cfg.Prefix + prefix)
+	if opt.continuationToken != "" {
+		input.SetContinuationToken(opt.continuationToken)
+	}
+	if opt.maxKeys > 0 {
+		input.SetMaxKeys(int64(opt.maxKeys))
+	}
+	output, err := a.client.ListObjectsV2WithContext(ctx, &input)
+	if err != nil {
+		return nil, fmt.Errorf("S3.ListObjectsV2WithContext: %w", err)
+	}
+
+	result := &ListObjectsV2Result{
+		Contents: lo.Map(output.Contents, func(v *s3.Object, _ int) *Object {
+			*v.Key = strings.TrimPrefix(*v.Key, a.cfg.Prefix)
+			return newObjectFromS3(v)
+		}),
+		NextContinuationToken: output.NextContinuationToken,
+	}
+	return result, nil
 }
 
 func (a *S3) SignURL(ctx context.Context, key string, expired int64, options ...SignOptions) (string, error) {
