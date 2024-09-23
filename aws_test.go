@@ -39,7 +39,7 @@ accessKeyID = "%s"
 accessKeySecret = "%s"
 endpoint = "%s"
 bucket = "%s"
-s3ForcePathStyle = true 
+s3ForcePathStyle = true
 region = "%s"
 ssl = false
 shards = [%s]
@@ -237,6 +237,46 @@ func TestS3_ListObject(t *testing.T) {
 	t.Log("res info", res)
 	assert.NoError(t, err)
 	assert.NotEqual(t, 0, len(res))
+}
+
+func TestS3_ListObjectsV2(t *testing.T) {
+	ctx := context.TODO()
+
+	err := awsCmp.Put(ctx, S3Guid, strings.NewReader(S3Content), nil)
+	assert.NoError(t, err)
+
+	err = awsCmp.Put(ctx, S3Guid+"-1", strings.NewReader(S3Content), nil)
+	assert.NoError(t, err)
+
+	err = awsCmp.Put(ctx, S3Guid+"-2", strings.NewReader(S3Content), nil)
+	assert.NoError(t, err)
+
+	err = awsCmp.Put(ctx, S3Guid+"-3", strings.NewReader(S3Content), nil)
+	assert.NoError(t, err)
+
+	// unlimited MaxKeys
+	{
+		res, err := awsCmp.defaultClient.ListObjectsV2(ctx, S3Guid)
+		t.Log("res info", res)
+		assert.NoError(t, err)
+		assert.Equal(t, 4, len(res.Contents))
+		assert.Nil(t, res.NextContinuationToken)
+	}
+
+	// MaxKeys=2
+	{
+		res, err := awsCmp.defaultClient.ListObjectsV2(ctx, S3Guid, ListWithMaxKeys(2))
+		t.Logf("len(contents)=%d. next_continuation_token=%s", len(res.Contents), *res.NextContinuationToken)
+		assert.NoError(t, err)
+		assert.Equal(t, 2, len(res.Contents))
+		assert.NotNil(t, res.NextContinuationToken)
+
+		res, err = awsCmp.defaultClient.ListObjectsV2(ctx, S3Guid, ListWithMaxKeys(2), ListWithContinuationToken(*res.NextContinuationToken))
+		t.Logf("len(contents)=%d. next_continuation_token=%v", len(res.Contents), res.NextContinuationToken)
+		assert.NoError(t, err)
+		assert.Equal(t, 2, len(res.Contents))
+		assert.Nil(t, res.NextContinuationToken)
+	}
 }
 
 func TestS3_Del(t *testing.T) {

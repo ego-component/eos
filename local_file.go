@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"go.uber.org/multierr"
 	"io"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"go.uber.org/multierr"
 )
 
 // LocalFile is the implementation based on local files.
@@ -32,6 +33,8 @@ func NewLocalFile(path string) (*LocalFile, error) {
 		meta: make(map[string]map[string]string),
 	}, err
 }
+
+var _ Client = (*LocalFile)(nil)
 
 func (l *LocalFile) GetBucketName(ctx context.Context, key string) (string, error) {
 	panic("implement me")
@@ -139,6 +142,10 @@ func (l *LocalFile) Head(ctx context.Context, key string, attributes []string) (
 
 func (l *LocalFile) ListObject(ctx context.Context, key string, prefix string, marker string, maxKeys int, delimiter string) ([]string, error) {
 	panic("implement me")
+}
+
+func (l *LocalFile) ListObjectsV2(ctx context.Context, prefix string, options ...ListObjectsV2Option) (*ListObjectsV2Result, error) {
+	panic("unimplemented")
 }
 
 func (l *LocalFile) SignURL(ctx context.Context, key string, expired int64, options ...SignOptions) (string, error) {

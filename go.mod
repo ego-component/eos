@@ -9,6 +9,7 @@ require (
 	github.com/aws/aws-sdk-go v1.38.52
 	github.com/golang/snappy v0.0.4
 	github.com/gotomicro/ego v1.1.16-0.20230920165307-fde12bdb31ee
+	github.com/samber/lo v1.47.0
 	github.com/stretchr/testify v1.8.4
 	go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.44.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.44.0
@@ -42,6 +43,7 @@ require (
 	go.uber.org/goleak v1.2.1 // indirect
 	go.uber.org/zap v1.21.0 // indirect
 	golang.org/x/sys v0.12.0 // indirect
+	golang.org/x/text v0.16.0 // indirect
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0 // indirect
 	google.golang.org/grpc v1.58.1 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
