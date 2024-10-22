@@ -36,7 +36,7 @@ func Load(key string) *Container {
 }
 
 func (c *Container) Build(options ...BuildOption) *Component {
-	//Register(DefaultGzipCompressor)
+	// Register(DefaultGzipCompressor)
 	for _, option := range options {
 		option(c)
 	}

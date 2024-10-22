@@ -17,3 +17,13 @@ func (combined CombinedReadCloser) Read(b []byte) (int, error) {
 func (combined CombinedReadCloser) Close() error {
 	return combined.ReadCloser.Close()
 }
+
+func collMap[T any, R any](collection []T, iteratee func(item T, index int) R) []R {
+	result := make([]R, len(collection))
+
+	for i := range collection {
+		result[i] = iteratee(collection[i], i)
+	}
+
+	return result
+}

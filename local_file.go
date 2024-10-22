@@ -15,6 +15,8 @@ import (
 	"go.uber.org/multierr"
 )
 
+var _ Client = (*LocalFile)(nil)
+
 // LocalFile is the implementation based on local files.
 // For desktop APP or test.
 type LocalFile struct {

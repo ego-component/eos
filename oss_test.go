@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/BurntSushi/toml"
-	"github.com/golang/snappy"
 	"github.com/gotomicro/ego/core/econf"
 	"github.com/stretchr/testify/assert"
 )
@@ -93,19 +92,6 @@ func TestOSS_Put(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestOSS_CompressAndPut(t *testing.T) {
-	ctx := context.TODO()
-	meta := make(map[string]string)
-	meta["head"] = strconv.Itoa(expectHead)
-	meta["length"] = strconv.Itoa(expectLength)
-
-	err := ossCmp.PutAndCompress(ctx, compressGUID, strings.NewReader(compressContent), meta)
-	assert.NoError(t, err)
-
-	err = ossCmp.PutAndCompress(ctx, compressGUID, bytes.NewReader([]byte(compressContent)), meta)
-	assert.NoError(t, err)
-}
-
 func TestOSS_Head(t *testing.T) {
 	ctx := context.TODO()
 	attributes := make([]string, 0)
@@ -175,47 +161,6 @@ func TestOSS_GetWithMeta(t *testing.T) {
 	head, err := strconv.Atoi(meta["head"])
 	assert.NoError(t, err)
 	assert.Equal(t, expectHead, head)
-}
-
-func TestOSS_GetAndDecompress(t *testing.T) {
-	ctx := context.TODO()
-	reader, meta, err := ossCmp.GetWithMeta(ctx, compressGUID, []string{MetaCompressor})
-	assert.NoError(t, err)
-	assert.Equal(t, "snappy", meta[MetaCompressor])
-
-	rawBytes, err := ioutil.ReadAll(reader)
-	assert.NoError(t, err)
-
-	decodedBytes, err := snappy.Decode(nil, rawBytes)
-	assert.NoError(t, err)
-	assert.Equal(t, compressContent, string(decodedBytes))
-
-	res, err := ossCmp.GetAndDecompress(ctx, compressGUID)
-	assert.NoError(t, err)
-	assert.Equal(t, compressContent, res)
-
-	res1, err := ossCmp.GetAndDecompressAsReader(ctx, compressGUID)
-	assert.NoError(t, err)
-
-	byteRes, _ := ioutil.ReadAll(res1)
-	assert.Equal(t, compressContent, string(byteRes))
-}
-
-func TestOSS_GetAndDecompress2(t *testing.T) {
-	ctx := context.TODO()
-	_, meta, err := ossCmp.GetWithMeta(ctx, guid, []string{MetaCompressor})
-	assert.NoError(t, err)
-	assert.Empty(t, meta[MetaCompressor])
-
-	res, err := ossCmp.GetAndDecompress(ctx, guid)
-	assert.NoError(t, err)
-	assert.Equal(t, content, res)
-
-	res1, err := ossCmp.GetAndDecompressAsReader(ctx, guid)
-	assert.NoError(t, err)
-
-	byteRes, _ := ioutil.ReadAll(res1)
-	assert.Equal(t, content, string(byteRes))
 }
 
 func TestOSS_SignURL(t *testing.T) {

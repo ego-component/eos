@@ -1,7 +1,6 @@
 package eos
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -13,7 +12,6 @@ import (
 
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"github.com/avast/retry-go"
-	"github.com/golang/snappy"
 )
 
 var _ Client = (*OSS)(nil)
@@ -22,7 +20,7 @@ type OSS struct {
 	Bucket *oss.Bucket
 	Shards map[string]*oss.Bucket
 	cfg    *BucketConfig
-	//compressor Compressor
+	// compressor Compressor
 }
 
 // 返回带prefix的key
@@ -161,66 +159,6 @@ func (ossClient *OSS) GetBytes(ctx context.Context, key string, options ...GetOp
 	return data, err
 }
 
-func (ossClient *OSS) GetAndDecompress(ctx context.Context, key string) (string, error) {
-	result, err := ossClient.get(ctx, key, DefaultGetOptions())
-	if err != nil {
-		return "", err
-	}
-	if result == nil {
-		return "", nil
-	}
-
-	body := result.Response
-	defer func() {
-		if body != nil {
-			body.Close()
-		}
-	}()
-
-	compressor := body.Headers.Get("X-Oss-Meta-Compressor")
-	if compressor != "" {
-		if compressor != "snappy" {
-			return "", errors.New("GetAndDecompress only supports snappy for now, got " + compressor)
-		}
-
-		rawBytes, err := ioutil.ReadAll(body)
-		if err != nil {
-			return "", err
-		}
-
-		decodedBytes, err := snappy.Decode(nil, rawBytes)
-		if err != nil {
-			if errors.Is(err, snappy.ErrCorrupt) {
-				reader := snappy.NewReader(bytes.NewReader(rawBytes))
-				data, err := ioutil.ReadAll(reader)
-				if err != nil {
-					return "", err
-				}
-
-				return string(data), nil
-			}
-			return "", err
-		}
-
-		return string(decodedBytes), err
-	}
-
-	data, err := ioutil.ReadAll(body)
-	if err != nil {
-		return "", err
-	}
-
-	return string(data), nil
-}
-
-func (ossClient *OSS) GetAndDecompressAsReader(ctx context.Context, key string) (io.ReadCloser, error) {
-	ret, err := ossClient.GetAndDecompress(ctx, key)
-	if err != nil {
-		return nil, err
-	}
-	return ioutil.NopCloser(strings.NewReader(ret)), nil
-}
-
 func (ossClient *OSS) Range(ctx context.Context, key string, offset int64, length int64) (io.ReadCloser, error) {
 	bucket, key, err := ossClient.getBucket(ctx, key)
 	if err != nil {
@@ -264,19 +202,6 @@ func (ossClient *OSS) Put(ctx context.Context, key string, reader io.Reader, met
 		ossOptions = append(ossOptions, oss.Expires(*putOptions.expires))
 	}
 
-	//if ossClient.compressor != nil {
-	//	l, err := GetReaderLength(reader)
-	//	if err != nil {
-	//		return err
-	//	}
-	//	if l > ossClient.cfg.CompressLimit {
-	//		reader, _, err = ossClient.compressor.Compress(reader)
-	//		if err != nil {
-	//			return err
-	//		}
-	//		ossOptions = append(ossOptions, oss.ContentEncoding(ossClient.compressor.ContentEncoding()))
-	//	}
-	//}
 	ossOptions = append(ossOptions, oss.WithContext(ctx))
 
 	return retry.Do(func() error {
@@ -284,31 +209,10 @@ func (ossClient *OSS) Put(ctx context.Context, key string, reader io.Reader, met
 		if err != nil && reader != nil {
 			// Reset the body reader after the request since at this point it's already read
 			// Note that it's safe to ignore the error here since the 0,0 position is always valid
-			//_, _ = reader.Seek(0, 0)
+			// _, _ = reader.Seek(0, 0)
 		}
 		return err
 	}, retry.Attempts(3), retry.Delay(1*time.Second))
-}
-
-func (ossClient *OSS) PutAndCompress(ctx context.Context, key string, reader io.Reader, meta map[string]string, options ...PutOptions) error {
-	//data, err := io.ReadAll(reader)
-	//if err != nil {
-	//	return err
-	//}
-
-	var buf bytes.Buffer
-	_, err := io.Copy(&buf, reader)
-	if err != nil {
-		return err
-	}
-	if meta == nil {
-		meta = make(map[string]string)
-	}
-
-	encodedBytes := snappy.Encode(nil, buf.Bytes())
-	meta["Compressor"] = "snappy"
-
-	return ossClient.Put(ctx, key, bytes.NewReader(encodedBytes), meta, options...)
 }
 
 func (ossClient *OSS) Del(ctx context.Context, key string) error {

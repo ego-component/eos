@@ -55,7 +55,8 @@ func (h *HeadGetObjectOutputWrapper) metaData() map[string]string {
 func mergeHttpStandardHeaders(output *HeadGetObjectOutputWrapper) map[string]*string {
 	res := make(map[string]*string)
 	for k, v := range output.metaData() {
-		res[k] = &v
+		val := v
+		res[k] = &val
 	}
 
 	res["Content-Length"] = output.getContentLength()

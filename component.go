@@ -56,24 +56,12 @@ func (c *Component) GetBytes(ctx context.Context, key string, options ...GetOpti
 	return c.defaultClient.GetBytes(ctx, key, options...)
 }
 
-func (c *Component) GetAndDecompress(ctx context.Context, key string) (string, error) {
-	return c.defaultClient.GetAndDecompress(ctx, key)
-}
-
-func (c *Component) GetAndDecompressAsReader(ctx context.Context, key string) (io.ReadCloser, error) {
-	return c.defaultClient.GetAndDecompressAsReader(ctx, key)
-}
-
 func (c *Component) Range(ctx context.Context, key string, offset int64, length int64) (io.ReadCloser, error) {
 	return c.defaultClient.Range(ctx, key, offset, length)
 }
 
 func (c *Component) Put(ctx context.Context, key string, reader io.Reader, meta map[string]string, options ...PutOptions) error {
 	return c.defaultClient.Put(ctx, key, reader, meta, options...)
-}
-
-func (c *Component) PutAndCompress(ctx context.Context, key string, reader io.Reader, meta map[string]string, options ...PutOptions) error {
-	return c.defaultClient.PutAndCompress(ctx, key, reader, meta, options...)
 }
 
 func (c *Component) Del(ctx context.Context, key string) error {

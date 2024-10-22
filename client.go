@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptrace"
+	"os"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/smithy-go/logging"
 	"github.com/gotomicro/ego/core/elog"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -28,10 +30,7 @@ type Client interface {
 	GetBytes(ctx context.Context, key string, options ...GetOptions) ([]byte, error)
 	GetAsReader(ctx context.Context, key string, options ...GetOptions) (io.ReadCloser, error)
 	GetWithMeta(ctx context.Context, key string, attributes []string, options ...GetOptions) (io.ReadCloser, map[string]string, error)
-	GetAndDecompress(ctx context.Context, key string) (string, error)
-	GetAndDecompressAsReader(ctx context.Context, key string) (io.ReadCloser, error)
 	Put(ctx context.Context, key string, reader io.Reader, meta map[string]string, options ...PutOptions) error
-	PutAndCompress(ctx context.Context, key string, reader io.Reader, meta map[string]string, options ...PutOptions) error
 	Del(ctx context.Context, key string) error
 	DelMulti(ctx context.Context, keys []string) error
 	Head(ctx context.Context, key string, meta []string) (map[string]string, error)
@@ -58,39 +57,15 @@ func newStorage(name string, cfg *BucketConfig, logger *elog.Component) (Client,
 
 func newS3(name string, cfg *BucketConfig, logger *elog.Component) (Client, error) {
 	awsConfig := aws.Config{
-		//BaseEndpoint: aws.String(cfg.Endpoint),
-		Region: cfg.Region,
-		//DisableSSL:  aws.Bool(!cfg.SSL),
+		Region:      cfg.Region,
 		Credentials: aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.AccessKeySecret, "")),
-		//Endpoint:         aws.String(cfg.Endpoint),
-		//S3ForcePathStyle: aws.Bool(true),
 	}
 	if cfg.Endpoint != "" {
 		awsConfig.BaseEndpoint = aws.String(cfg.Endpoint)
 	}
-	// use minio
-	//if cfg.S3ForcePathStyle {
-	//	awsConfig = aws.Config{
-	//		BaseEndpoint: aws.String(cfg.Endpoint),
-	//		Region:      cfg.Region,
-	//		//DisableSSL:  aws.Bool(!cfg.SSL),
-	//		Credentials: aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.AccessKeySecret, ""),
-	//		//Endpoint:         aws.String(cfg.Endpoint),
-	//		S3ForcePathStyle: aws.Bool(true),
-	//	}
-	//} else {
-	//	awsConfig = aws.Config{
-	//		Region:      aws.String(cfg.Region),
-	//		DisableSSL:  aws.Bool(!cfg.SSL),
-	//		Credentials: credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.AccessKeySecret, ""),
-	//	}
-	//	if cfg.Endpoint != "" {
-	//		config.Endpoint = aws.String(cfg.Endpoint)
-	//	}
-	//}
 	if cfg.Debug {
-		//awsConfig.Logger = elog.EgoLogger
-		//slog.Default().Enabled(context.Background(), slog.LevelDebug)
+		awsConfig.Logger = logging.NewStandardLogger(os.Stderr)
+		awsConfig.ClientLogMode = aws.LogRetries | aws.LogRequest | aws.LogResponseWithBody
 	}
 
 	awsConfig.HTTPClient = newHttpClient(name, cfg, logger)
@@ -117,15 +92,6 @@ func newS3(name string, cfg *BucketConfig, logger *elog.Component) (Client, erro
 		}
 	}
 	s3Client.cfg = cfg
-	//if cfg.EnableCompressor {
-	//	// 目前仅支持 gzip
-	//	if comp, ok := compressors[cfg.CompressType]; ok {
-	//		s3Client.compressor = comp
-	//	} else {
-	//		logger.Warn("unknown type", elog.String("name", cfg.CompressType))
-	//	}
-	//}
-
 	s3Client.presignClient = s3.NewPresignClient(service)
 
 	return s3Client, nil
@@ -168,14 +134,7 @@ func newOSS(name string, cfg *BucketConfig, logger *elog.Component) (Client, err
 		}
 	}
 	ossClient.cfg = cfg
-	//if cfg.EnableCompressor {
-	//	// 目前仅支持 gzip
-	//	if comp, ok := compressors[cfg.CompressType]; ok {
-	//		ossClient.compressor = comp
-	//	} else {
-	//		logger.Warn("unknown type", elog.String("name", cfg.CompressType))
-	//	}
-	//}
+
 	return ossClient, nil
 }
 
