@@ -22,9 +22,6 @@ const (
 	content      = "aaaaaa"
 	expectLength = 6
 	expectHead   = 1
-
-	compressGUID    = "test123-snappy"
-	compressContent = "snappy-contentsnappy-contentsnappy-contentsnappy-content"
 )
 
 var (
@@ -33,7 +30,7 @@ var (
 
 var ossConfs = `
 [eos.oss]
-debug = false
+debug = true
 storageType = "oss"
 s3HttpTransportMaxConnsPerHost = 100
 s3HttpTransportIdleConnTimeout = "90s"
@@ -47,17 +44,15 @@ ssl = false
 shards = [%s]
 compressLimit = 0
 prefix = "abc-01"
-enableCompressor = %t
-compressType = "%s"
 `
 
 func init() {
-	ossCmp = newOssCmp(os.Getenv("BUCKET"), "", true, "gzip")
+	ossCmp = newOssCmp(os.Getenv("BUCKET"), "")
 }
 
-func newOssCmp(bucket string, shards string, enableCompressor bool, compressType string) *Component {
+func newOssCmp(bucket string, shards string) *Component {
 	newConfs := fmt.Sprintf(ossConfs, os.Getenv("AK_ID"), os.Getenv("AK_SECRET"), os.Getenv("ENDPOINT"),
-		bucket, os.Getenv("REGION"), shards, enableCompressor, compressType)
+		bucket, os.Getenv("REGION"), shards)
 	if err := econf.LoadFromReader(strings.NewReader(newConfs), toml.Unmarshal); err != nil {
 		panic(err)
 	}
@@ -67,7 +62,7 @@ func newOssCmp(bucket string, shards string, enableCompressor bool, compressType
 
 func TestOSS_GetBucketName(t *testing.T) {
 	bucketShard := os.Getenv("BUCKET_SHARD")
-	cmp := newOssCmp(bucketShard, `"abcdefghijklmnopqr", "stuvwxyz0123456789"`, true, "gzip")
+	cmp := newOssCmp(bucketShard, `"abcdefghijklmnopqr", "stuvwxyz0123456789"`)
 
 	ctx := context.TODO()
 	bn, err := cmp.GetBucketName(ctx, "fasdfsfsfsafsf")
@@ -215,7 +210,7 @@ func TestOSS_GetNotExist(t *testing.T) {
 }
 
 func TestOSS_Range(t *testing.T) {
-	cmp := newOssCmp(os.Getenv("BUCKET"), "", false, "")
+	cmp := newOssCmp(os.Getenv("BUCKET"), "")
 
 	ctx := context.TODO()
 	cmp.Del(ctx, guid)

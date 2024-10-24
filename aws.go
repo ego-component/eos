@@ -109,7 +109,6 @@ func (a *S3) GetAsReader(ctx context.Context, key string, options ...GetOptions)
 		return nil, fmt.Errorf("GetAsReader getBucketAndKey fail, err: %w", err)
 	}
 
-	fmt.Printf("key--------------->"+"%+v\n", key)
 	input := &s3.GetObjectInput{
 		Bucket: aws.String(bucketName),
 		Key:    aws.String(key),
@@ -120,7 +119,6 @@ func (a *S3) GetAsReader(ctx context.Context, key string, options ...GetOptions)
 	if err != nil {
 		// https://aws.github.io/aws-sdk-go-v2/docs/migrating/
 		if isNotFound(err) {
-			fmt.Printf("22--------------->"+"%+v\n", 22)
 			return nil, nil
 		}
 		return nil, fmt.Errorf("GetAsReader GetObject fail, err: %w", err)
@@ -312,7 +310,6 @@ func (a *S3) Head(ctx context.Context, key string, attributes []string) (map[str
 		Key:    aws.String(key),
 	}
 
-	fmt.Printf("key--------------->"+"%+v\n", key)
 	result, err := a.client.HeadObject(ctx, input)
 	if err != nil {
 		if isNotFound(err) {

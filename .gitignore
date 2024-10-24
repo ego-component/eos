@@ -10,3 +10,4 @@ dev/
 logs/
 .env
 .env-oss
+coverage.txt

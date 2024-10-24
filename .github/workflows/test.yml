@@ -1,0 +1,64 @@
+name: Go
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    services:
+      minio:
+        image: bitnami/minio:2024.10.2
+        env:
+          MINIO_DEFAULT_BUCKETS: default
+        ports:
+          - 9000:9000
+        options: --name minio-server
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.22
+      - name: test-cos
+        env:
+          ENDPOINT: ${{ secrets.COS_ENDPOINT }}
+          REGION: ${{ secrets.COS_REGION }}
+          BUCKET: ${{ secrets.COS_BUCKET }}
+          AK_ID: ${{ secrets.COS_AK_ID }}
+          AK_SECRET: ${{ secrets.COS_AK_SECRET }}
+          BUCKET_SHARD: ${{ secrets.COS_BUCKET }}
+          S3_FORCE_PATH_STYLE: false
+        run:
+          go test -run=TestS3 -v -race $(go list ./... | grep -v /examples)
+      - name: test-minio
+        env:
+          ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
+          REGION: ${{ secrets.MINIO_REGION }}
+          BUCKET: ${{ secrets.MINIO_BUCKET }}
+          AK_ID: ${{ secrets.MINIO_AK_ID }}
+          AK_SECRET: ${{ secrets.MINIO_AK_SECRET }}
+          BUCKET_SHARD: ${{ secrets.MINIO_BUCKET }}
+          S3_FORCE_PATH_STYLE: true
+        run: env && go test -run=TestS3 -v -race $(go list ./... | grep -v /examples)
+      - name: test-obs
+        env:
+          ENDPOINT: ${{ secrets.OBS_ENDPOINT }}
+          REGION: ${{ secrets.OBS_REGION }}
+          BUCKET: ${{ secrets.OBS_BUCKET }}
+          AK_ID: ${{ secrets.OBS_AK_ID }}
+          AK_SECRET: ${{ secrets.OBS_AK_SECRET }}
+          BUCKET_SHARD: ${{ secrets.OBS_BUCKET }}
+          S3_FORCE_PATH_STYLE: false
+        run: go test -run=TestS3 -v -race $(go list ./... | grep -v /examples)
+      - name: test-oss
+        env:
+          ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+          REGION: ${{ secrets.OSS_REGION }}
+          BUCKET: ${{ secrets.OSS_BUCKET }}
+          AK_ID: ${{ secrets.OSS_AK_ID }}
+          AK_SECRET: ${{ secrets.OSS_AK_SECRET }}
+          BUCKET_SHARD: ${{ secrets.OSS_BUCKET }}
+          S3_FORCE_PATH_STYLE: false
+        run: go test -run=TestOSS -v -race $(go list ./... | grep -v /examples)
