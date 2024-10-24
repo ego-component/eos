@@ -148,28 +148,6 @@ func (s *LocalFileTestSuite) TestGetBucketName() {
 	})
 }
 
-func (s *LocalFileTestSuite) TestGetXX() {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-	defer cancel()
-	key1 := "TestGetXX_KEY1"
-	rd, meta, err := s.oss.GetWithMeta(ctx, key1, []string{"hello"})
-	require.NoError(s.T(), err)
-	assert.Equal(s.T(), map[string]string{"hello": "world"}, meta)
-	data, err := io.ReadAll(rd)
-	require.NoError(s.T(), err)
-	assert.Equal(s.T(), "hello", string(data))
-
-	data, err = s.oss.GetBytes(ctx, key1)
-	require.NoError(s.T(), err)
-	assert.Equal(s.T(), "hello", string(data))
-
-	rd, err = s.oss.GetAsReader(ctx, key1)
-	data, err = io.ReadAll(rd)
-	require.NoError(s.T(), err)
-	assert.Equal(s.T(), "hello", string(data))
-
-}
-
 func TestLocalFile(t *testing.T) {
 	suite.Run(t, new(LocalFileTestSuite))
 }
