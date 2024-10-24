@@ -29,9 +29,9 @@ func (s *LocalFileTestSuite) SetupSuite() {
 	s.oss = oss
 }
 
-//func (s *LocalFileTestSuite) TearDownSuite() {
+// func (s *LocalFileTestSuite) TearDownSuite() {
 //	_ = os.RemoveAll(s.path)
-//}
+// }
 
 func (s *LocalFileTestSuite) TestCRUD() {
 	testCases := []struct {
@@ -144,7 +144,8 @@ func (s *LocalFileTestSuite) TestDelMulti() {
 
 func (s *LocalFileTestSuite) TestGetBucketName() {
 	assert.Panics(s.T(), func() {
-		s.oss.GetBucketName(context.Background(), "key")
+		_, err := s.oss.GetBucketName(context.Background(), "key")
+		assert.NoError(s.T(), err)
 	})
 }
 

@@ -6,7 +6,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -92,16 +92,15 @@ func TestOSS_Head(t *testing.T) {
 	attributes := make([]string, 0)
 	attributes = append(attributes, "head")
 	var res map[string]string
-	var err error
-	var head int
 	var length int
 
-	res, err = ossCmp.Head(ctx, guid, attributes)
+	res, err := ossCmp.Head(ctx, guid, attributes)
 	assert.NoError(t, err)
 
-	head, err = strconv.Atoi(res["head"])
+	head, err := strconv.Atoi(res["head"])
 	assert.NoError(t, err)
 
+	t.Logf("head info, %d", head)
 	attributes = append(attributes, "length")
 	attributes = append(attributes, "Content-Type")
 	res, err = ossCmp.Head(ctx, guid, attributes)
@@ -128,10 +127,10 @@ func TestOSS_Get(t *testing.T) {
 	assert.NoError(t, err)
 	defer res1.Close()
 
-	byteRes, _ := ioutil.ReadAll(res1)
+	byteRes, _ := io.ReadAll(res1)
 	assert.Equal(t, content, string(byteRes))
 
-	opts := []GetOptions{}
+	var opts []GetOptions
 	// TODO EnableCRCValidation()
 	resBytes, err := ossCmp.GetBytes(ctx, guid, opts...)
 	assert.NoError(t, err)
@@ -150,7 +149,7 @@ func TestOSS_GetWithMeta(t *testing.T) {
 	assert.NoError(t, err)
 	defer res.Close()
 
-	byteRes, _ := ioutil.ReadAll(res)
+	byteRes, _ := io.ReadAll(res)
 	assert.Equal(t, content, string(byteRes))
 
 	head, err := strconv.Atoi(meta["head"])
@@ -167,7 +166,7 @@ func TestOSS_SignURL(t *testing.T) {
 
 func TestOSS_ListObject(t *testing.T) {
 	ctx := context.TODO()
-	res, err := ossCmp.ListObject(ctx, guid, guid[0:4], "", 10, "")
+	res, err := ossCmp.ListObjects(ctx, nil, ListWithPrefix(guid), ListWithMaxKeys(10))
 	assert.NoError(t, err)
 	assert.NotEmpty(t, res)
 }
@@ -213,15 +212,17 @@ func TestOSS_Range(t *testing.T) {
 	cmp := newOssCmp(os.Getenv("BUCKET"), "")
 
 	ctx := context.TODO()
-	cmp.Del(ctx, guid)
+	err := cmp.Del(ctx, guid)
+	assert.NoError(t, err)
+
 	meta := make(map[string]string)
-	err := cmp.Put(ctx, guid, strings.NewReader("123456"), meta)
+	err = cmp.Put(ctx, guid, strings.NewReader("123456"), meta)
 	assert.NoError(t, err)
 
 	res, err := cmp.Range(ctx, guid, 3, 3)
 	assert.NoError(t, err)
 
-	byteRes, err := ioutil.ReadAll(res)
+	byteRes, err := io.ReadAll(res)
 	assert.NoError(t, err)
 	assert.Equal(t, "456", string(byteRes))
 }

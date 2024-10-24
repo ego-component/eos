@@ -132,3 +132,43 @@ type signOptions struct {
 func DefaultSignOptions() *signOptions {
 	return &signOptions{}
 }
+
+type listObjectsOptions struct {
+	shardingKey string
+	maxKeys     int
+	prefix      string
+	startAfter  string
+	isTruncated *bool
+}
+
+type ListObjectsOption func(opt *listObjectsOptions)
+
+func ListWithShardingKey(key string) ListObjectsOption {
+	return func(opt *listObjectsOptions) {
+		opt.shardingKey = key
+	}
+}
+
+func ListWithMaxKeys(maxKeys int) ListObjectsOption {
+	return func(opt *listObjectsOptions) {
+		opt.maxKeys = maxKeys
+	}
+}
+
+func ListWithStartAfter(startAfter string) ListObjectsOption {
+	return func(opt *listObjectsOptions) {
+		opt.startAfter = startAfter
+	}
+}
+
+func ListWithIsTruncated(isTruncated *bool) ListObjectsOption {
+	return func(opt *listObjectsOptions) {
+		opt.isTruncated = isTruncated
+	}
+}
+
+func ListWithPrefix(prefix string) ListObjectsOption {
+	return func(opt *listObjectsOptions) {
+		opt.prefix = prefix
+	}
+}

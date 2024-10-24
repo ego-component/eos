@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go/logging"
 	"github.com/gotomicro/ego/core/elog"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
@@ -34,7 +35,7 @@ type Client interface {
 	Del(ctx context.Context, key string) error
 	DelMulti(ctx context.Context, keys []string) error
 	Head(ctx context.Context, key string, meta []string) (map[string]string, error)
-	ListObject(ctx context.Context, key string, prefix string, marker string, maxKeys int, delimiter string) ([]string, error)
+	ListObjects(ctx context.Context, continuationToken *string, options ...ListObjectsOption) (*ListObjectsResult, error)
 	SignURL(ctx context.Context, key string, expired int64, options ...SignOptions) (string, error)
 	Range(ctx context.Context, key string, offset int64, length int64) (io.ReadCloser, error)
 	Exists(ctx context.Context, key string) (bool, error)
@@ -74,7 +75,7 @@ func newS3(name string, cfg *BucketConfig, logger *elog.Component) (Client, erro
 	})
 
 	var s3Client *S3
-	if cfg.Shards != nil && len(cfg.Shards) > 0 {
+	if len(cfg.Shards) > 0 {
 		buckets := make(map[string]string)
 		for _, v := range cfg.Shards {
 			for i := 0; i < len(v); i++ {
@@ -108,7 +109,7 @@ func newOSS(name string, cfg *BucketConfig, logger *elog.Component) (Client, err
 	}
 
 	var ossClient *OSS
-	if cfg.Shards != nil && len(cfg.Shards) > 0 {
+	if len(cfg.Shards) > 0 {
 		buckets := make(map[string]*oss.Bucket)
 		for _, v := range cfg.Shards {
 			bucket, err := client.Bucket(cfg.Bucket + "-" + v)
@@ -119,19 +120,13 @@ func newOSS(name string, cfg *BucketConfig, logger *elog.Component) (Client, err
 				buckets[strings.ToLower(v[i:i+1])] = bucket
 			}
 		}
-
-		ossClient = &OSS{
-			Shards: buckets,
-		}
+		ossClient = &OSS{Shards: buckets}
 	} else {
 		bucket, err := client.Bucket(cfg.Bucket)
 		if err != nil {
 			return nil, err
 		}
-
-		ossClient = &OSS{
-			Bucket: bucket,
-		}
+		ossClient = &OSS{Bucket: bucket}
 	}
 	ossClient.cfg = cfg
 
@@ -180,4 +175,38 @@ func createTransport(config *BucketConfig) *http.Transport {
 		DisableKeepAlives:     !config.EnableKeepAlives,
 		MaxIdleConnsPerHost:   config.MaxIdleConnsPerHost,
 	}
+}
+
+type Object struct {
+	Key          string
+	Size         int64
+	LastModified time.Time
+}
+
+func newObjectFromS3(o *types.Object) *Object {
+	res := &Object{}
+	if o.Key != nil {
+		res.Key = *o.Key
+	}
+	if o.Size != nil {
+		res.Size = *o.Size
+	}
+	if o.LastModified != nil {
+		res.LastModified = *o.LastModified
+	}
+	return res
+}
+
+func newObjectFromOss(o *oss.ObjectProperties) *Object {
+	return &Object{
+		Key:          o.Key,
+		Size:         o.Size,
+		LastModified: o.LastModified,
+	}
+}
+
+type ListObjectsResult struct {
+	Objects               []*Object
+	NextContinuationToken *string
+	IsTruncated           *bool
 }

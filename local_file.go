@@ -12,9 +12,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ego-component/eos/eospb"
-	"github.com/golang/protobuf/proto"
 	"go.uber.org/multierr"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/ego-component/eos/eospb"
 )
 
 var _ Client = (*LocalFile)(nil)
@@ -25,7 +26,8 @@ type LocalFile struct {
 	// path is the content root
 	// all files are stored here.
 	path string
-	l    sync.Mutex
+	//lint:ignore U1000
+	l sync.Mutex
 }
 
 func NewLocalFile(path string) (*LocalFile, error) {
@@ -82,7 +84,9 @@ func (l *LocalFile) GetWithMeta(ctx context.Context, key string, attributes []st
 	}
 	defer rd.Close()
 	var buf bytes.Buffer
-	_, err = io.Copy(&buf, rd)
+	if _, err = io.Copy(&buf, rd); err != nil {
+		return nil, nil, err
+	}
 
 	fileBytes := buf.Bytes()
 	buffer := writeBuffer()
@@ -93,8 +97,7 @@ func (l *LocalFile) GetWithMeta(ctx context.Context, key string, attributes []st
 
 	metaBytes := buffer.GetByOffsetAndLength(8, headerLength)
 	headerProto := eospb.LocalFileSegment{}
-	err = proto.Unmarshal(metaBytes, &headerProto)
-	if err != nil {
+	if err = proto.Unmarshal(metaBytes, &headerProto); err != nil {
 		return nil, nil, err
 	}
 
@@ -105,15 +108,6 @@ func (l *LocalFile) GetWithMeta(ctx context.Context, key string, attributes []st
 
 	return io.NopCloser(bytes.NewBuffer(fileBytes[8+headerLength : 8+headerLength+contentLength])), meta, nil
 }
-
-//
-//func (l *LocalFile) GetAndDecompress(ctx context.Context, key string) (string, error) {
-//	return l.Get(ctx, key)
-//}
-//
-//func (l *LocalFile) GetAndDecompressAsReader(ctx context.Context, key string) (io.ReadCloser, error) {
-//	return l.GetAsReader(ctx, key)
-//}
 
 // Put override the file
 // It will create two files, one for content, one for meta.
@@ -136,6 +130,9 @@ func (l *LocalFile) Put(ctx context.Context, key string, reader io.Reader, meta 
 	}
 	var contentBytes bytes.Buffer
 	_, err = io.Copy(&contentBytes, reader)
+	if err != nil {
+		return err
+	}
 
 	bufferWriter.Put32(uint32(len(headerBytes)))
 	bufferWriter.Put32(uint32(len(contentBytes.Bytes())))
@@ -145,24 +142,20 @@ func (l *LocalFile) Put(ctx context.Context, key string, reader io.Reader, meta 
 	return err
 }
 
-//func (l *LocalFile) PutAndCompress(ctx context.Context, key string, reader io.Reader, meta map[string]string, options ...PutOptions) error {
-//	return l.Put(ctx, key, reader, meta)
-//}
-
 func (l *LocalFile) Del(ctx context.Context, key string) error {
 	filename := l.initDir(key)
 	return os.Remove(filename)
 }
 
 func (l *LocalFile) DelMulti(ctx context.Context, keys []string) error {
-	var res error
+	var err error
 	for _, key := range keys {
-		err := l.Del(ctx, key)
+		err = l.Del(ctx, key)
 		if err != nil {
-			err = multierr.Append(res, fmt.Errorf("faile to delete file, key %s, %w", key, err))
+			err = multierr.Append(err, fmt.Errorf("faile to delete file, key %s, %w", key, err))
 		}
 	}
-	return res
+	return err
 }
 
 func (l *LocalFile) Head(ctx context.Context, key string, attributes []string) (map[string]string, error) {
@@ -172,7 +165,10 @@ func (l *LocalFile) Head(ctx context.Context, key string, attributes []string) (
 	}
 	defer rd.Close()
 	var buf bytes.Buffer
-	_, err = io.Copy(&buf, rd)
+
+	if _, err = io.Copy(&buf, rd); err != nil {
+		return nil, err
+	}
 
 	buffer := writeBuffer()
 	buffer.Put(buf.Bytes())
@@ -180,8 +176,7 @@ func (l *LocalFile) Head(ctx context.Context, key string, attributes []string) (
 	headerLength := buffer.Get32ByOffset(0)
 	metaBytes := buffer.GetByOffsetAndLength(8, headerLength)
 	headerProto := eospb.LocalFileSegment{}
-	err = proto.Unmarshal(metaBytes, &headerProto)
-	if err != nil {
+	if err = proto.Unmarshal(metaBytes, &headerProto); err != nil {
 		return nil, err
 	}
 
@@ -192,7 +187,7 @@ func (l *LocalFile) Head(ctx context.Context, key string, attributes []string) (
 	return meta, nil
 }
 
-func (l *LocalFile) ListObject(ctx context.Context, key string, prefix string, marker string, maxKeys int, delimiter string) ([]string, error) {
+func (l *LocalFile) ListObjects(ctx context.Context, continuationToken *string, options ...ListObjectsOption) (*ListObjectsResult, error) {
 	panic("implement me")
 }
 
@@ -207,7 +202,9 @@ func (l *LocalFile) Range(ctx context.Context, key string, offset int64, length 
 	}
 	defer rd.Close()
 	var buf bytes.Buffer
-	_, err = io.Copy(&buf, rd)
+	if _, err = io.Copy(&buf, rd); err != nil {
+		return nil, err
+	}
 
 	fileBytes := buf.Bytes()
 	buffer := writeBuffer()

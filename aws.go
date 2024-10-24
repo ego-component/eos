@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
+	"github.com/samber/lo"
 )
 
 var _ Client = (*S3)(nil)
@@ -89,7 +90,7 @@ func (a *S3) GetBucketName(ctx context.Context, key string) (string, error) {
 
 func (a *S3) getBucketAndKey(ctx context.Context, key string) (string, string, error) {
 	key = a.keyWithPrefix(key)
-	if a.ShardsBucket != nil && len(a.ShardsBucket) > 0 {
+	if len(a.ShardsBucket) > 0 {
 		keyLength := len(key)
 		bucketName := a.ShardsBucket[strings.ToLower(key[keyLength-1:keyLength])]
 		if bucketName == "" {
@@ -322,41 +323,46 @@ func (a *S3) Head(ctx context.Context, key string, attributes []string) (map[str
 	})), nil
 }
 
-func (a *S3) ListObject(ctx context.Context, key string, prefix string, marker string, maxKeys int, delimiter string) ([]string, error) {
-	bucketName, _, err := a.getBucketAndKey(ctx, key)
+func (a *S3) ListObjects(ctx context.Context, continuationToken *string, options ...ListObjectsOption) (*ListObjectsResult, error) {
+	var opt listObjectsOptions
+	for _, f := range options {
+		f(&opt)
+	}
+
+	bucketName, _, err := a.getBucketAndKey(ctx, opt.shardingKey)
 	if err != nil {
 		return nil, err
 	}
 
-	input := &s3.ListObjectsInput{
-		Bucket: aws.String(bucketName),
+	input := &s3.ListObjectsV2Input{
+		Bucket:            aws.String(bucketName),
+		ContinuationToken: continuationToken,
 	}
 	input.Prefix = aws.String(a.cfg.Prefix)
-	if prefix != "" {
-		input.Prefix = aws.String(a.cfg.Prefix + prefix)
+	if opt.prefix != "" {
+		input.Prefix = aws.String(a.cfg.Prefix + opt.prefix)
 	}
-	input.Marker = aws.String(a.cfg.Prefix)
-	if marker != "" {
-		input.Marker = aws.String(a.cfg.Prefix + marker)
+	if opt.maxKeys > 0 {
+		input.MaxKeys = aws.Int32(int32(opt.maxKeys))
 	}
-	if maxKeys > 0 {
-		input.MaxKeys = aws.Int32(int32(maxKeys))
-	}
-	if delimiter != "" {
-		input.Delimiter = aws.String(delimiter)
+	if opt.startAfter != "" {
+		input.StartAfter = aws.String(a.cfg.Prefix + opt.startAfter)
 	}
 
-	result, err := a.client.ListObjects(ctx, input)
+	output, err := a.client.ListObjectsV2(ctx, input)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("S3.ListObjectsV2WithContext: %w", err)
 	}
 
-	keys := make([]string, 0)
-	for _, v := range result.Contents {
-		keys = append(keys, *v.Key)
+	result := &ListObjectsResult{
+		Objects: lo.Map(output.Contents, func(v types.Object, _ int) *Object {
+			*v.Key = strings.TrimPrefix(*v.Key, a.cfg.Prefix)
+			return newObjectFromS3(&v)
+		}),
+		NextContinuationToken: output.NextContinuationToken,
+		IsTruncated:           output.IsTruncated,
 	}
-
-	return keys, nil
+	return result, nil
 }
 
 func (a *S3) SignURL(ctx context.Context, key string, expired int64, options ...SignOptions) (string, error) {
@@ -368,11 +374,11 @@ func (a *S3) SignURL(ctx context.Context, key string, expired int64, options ...
 		Bucket: aws.String(bucketName),
 		Key:    aws.String(key),
 	}
-	signOptions := DefaultSignOptions()
+	so := DefaultSignOptions()
 	for _, opt := range options {
-		opt(signOptions)
+		opt(so)
 	}
-	if signOptions.process != nil {
+	if so.process != nil {
 		panic("process option is not supported for s3")
 	}
 	req, err := a.presignClient.PresignGetObject(ctx, input, func(options *s3.PresignOptions) {
@@ -381,7 +387,7 @@ func (a *S3) SignURL(ctx context.Context, key string, expired int64, options ...
 	if err != nil {
 		return "", err
 	}
-	// return req.Presign(time.Duration(expired) * time.Second)
+
 	return req.URL, nil
 }
 
@@ -434,10 +440,11 @@ func getS3Meta(ctx context.Context, attributes []string, metaData map[string]*st
 	// 创建临时map，用来存key全部转成小写后的header
 	tmpMetaData := make(map[string]*string, len(metaData))
 	for k, v := range metaData {
+		// nolint
 		tmpMetaData[strings.Title(k)] = v
 	}
 	for _, v := range attributes {
-		// 把需要查询的key转成小写后去tmpMetaData里面查
+		// nolint 把需要查询的key转成小写后去tmpMetaData里面查
 		tmpV := strings.Title(v)
 		if val := tmpMetaData[tmpV]; val != nil {
 			res[v] = *val

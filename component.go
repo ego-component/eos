@@ -76,8 +76,8 @@ func (c *Component) Head(ctx context.Context, key string, attributes []string) (
 	return c.defaultClient.Head(ctx, key, attributes)
 }
 
-func (c *Component) ListObject(ctx context.Context, key string, prefix string, marker string, maxKeys int, delimiter string) ([]string, error) {
-	return c.defaultClient.ListObject(ctx, key, prefix, marker, maxKeys, delimiter)
+func (c *Component) ListObjects(ctx context.Context, continuationToken *string, options ...ListObjectsOption) (*ListObjectsResult, error) {
+	return c.defaultClient.ListObjects(ctx, continuationToken, options...)
 }
 
 func (c *Component) SignURL(ctx context.Context, key string, expired int64, options ...SignOptions) (string, error) {

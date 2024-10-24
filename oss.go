@@ -5,13 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"github.com/avast/retry-go"
+	"github.com/samber/lo"
 )
 
 var _ Client = (*OSS)(nil)
@@ -147,7 +147,7 @@ func (ossClient *OSS) GetBytes(ctx context.Context, key string, options ...GetOp
 		}
 	}()
 
-	data, err := ioutil.ReadAll(body)
+	data, err := io.ReadAll(body)
 	if err != nil {
 		return nil, err
 	}
@@ -183,10 +183,8 @@ func (ossClient *OSS) Put(ctx context.Context, key string, reader io.Reader, met
 	}
 
 	ossOptions := make([]oss.Option, 0)
-	if meta != nil {
-		for k, v := range meta {
-			ossOptions = append(ossOptions, oss.Meta(k, v))
-		}
+	for k, v := range meta {
+		ossOptions = append(ossOptions, oss.Meta(k, v))
 	}
 	ossOptions = append(ossOptions, oss.ContentType(putOptions.contentType))
 	if putOptions.contentEncoding != nil {
@@ -204,15 +202,20 @@ func (ossClient *OSS) Put(ctx context.Context, key string, reader io.Reader, met
 
 	ossOptions = append(ossOptions, oss.WithContext(ctx))
 
-	return retry.Do(func() error {
-		err := bucket.PutObject(key, reader, ossOptions...)
-		if err != nil && reader != nil {
-			// Reset the body reader after the request since at this point it's already read
-			// Note that it's safe to ignore the error here since the 0,0 position is always valid
-			// _, _ = reader.Seek(0, 0)
-		}
-		return err
-	}, retry.Attempts(3), retry.Delay(1*time.Second))
+	r, ok := reader.(io.ReadSeeker)
+	if ok {
+		return retry.Do(func() error {
+			err := bucket.PutObject(key, r, ossOptions...)
+			if err != nil && reader != nil {
+				// Reset the body reader after the request since at this point it's already read
+				// Note that it's safe to ignore the error here since the 0,0 position is always valid
+				_, _ = r.Seek(0, 0)
+			}
+			return err
+		}, retry.Attempts(3), retry.Delay(1*time.Second))
+	} else {
+		return bucket.PutObject(key, reader, ossOptions...)
+	}
 }
 
 func (ossClient *OSS) Del(ctx context.Context, key string) error {
@@ -263,20 +266,43 @@ func (ossClient *OSS) Head(ctx context.Context, key string, attributes []string)
 	return getOSSMeta(ctx, attributes, headers), nil
 }
 
-func (ossClient *OSS) ListObject(ctx context.Context, key string, prefix string, marker string, maxKeys int, delimiter string) ([]string, error) {
-	bucket, _, err := ossClient.getBucket(ctx, key)
+func (ossClient *OSS) ListObjects(ctx context.Context, continuationToken *string, options ...ListObjectsOption) (*ListObjectsResult, error) {
+	var opt listObjectsOptions
+	for _, f := range options {
+		f(&opt)
+	}
+
+	bucket, _, err := ossClient.getBucket(ctx, opt.shardingKey)
 	if err != nil {
 		return nil, err
 	}
 
-	prefix = ossClient.cfg.Prefix + prefix
-	res, err := bucket.ListObjects(oss.Prefix(prefix), oss.Marker(marker), oss.MaxKeys(maxKeys), oss.Delimiter(delimiter), oss.WithContext(ctx))
-	keys := make([]string, 0)
-	for _, v := range res.Objects {
-		keys = append(keys, v.Key)
+	var ossOpts = []oss.Option{
+		oss.Prefix(ossClient.cfg.Prefix + opt.prefix),
+	}
+	if continuationToken != nil {
+		ossOpts = append(ossOpts, oss.ContinuationToken(*continuationToken))
+	}
+	if opt.maxKeys > 0 {
+		ossOpts = append(ossOpts, oss.MaxKeys(opt.maxKeys))
+	}
+	if opt.startAfter != "" {
+		ossOpts = append(ossOpts, oss.StartAfter(ossClient.cfg.Prefix+opt.startAfter))
 	}
 
-	return keys, nil
+	res, err := bucket.ListObjectsV2(ossOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("oss.Bucket.ListObjectsV2: %w", err)
+	}
+
+	var result = &ListObjectsResult{
+		Objects: lo.Map(res.Objects, func(v oss.ObjectProperties, _ int) *Object { return newObjectFromOss(&v) }),
+	}
+	if res.NextContinuationToken != "" {
+		result.NextContinuationToken = &res.NextContinuationToken
+	}
+	result.IsTruncated = &res.IsTruncated
+	return result, nil
 }
 
 func (ossClient *OSS) SignURL(ctx context.Context, key string, expired int64, options ...SignOptions) (string, error) {
@@ -354,7 +380,7 @@ func getOSSOptions(ctx context.Context, getOpts *getOptions) []oss.Option {
 
 func (ossClient *OSS) getBucket(ctx context.Context, key string) (*oss.Bucket, string, error) {
 	key = ossClient.keyWithPrefix(key)
-	if ossClient.Shards != nil && len(ossClient.Shards) > 0 {
+	if len(ossClient.Shards) > 0 {
 		keyLength := len(key)
 		bucket := ossClient.Shards[strings.ToLower(key[keyLength-1:keyLength])]
 		if bucket == nil {

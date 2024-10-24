@@ -2,13 +2,14 @@ package eos
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/gotomicro/ego/core/econf"
@@ -146,16 +147,11 @@ func TestS3_Head(t *testing.T) {
 	assert.NoError(t, err)
 
 	res, err = cmp.Head(ctx, headGuid, attributes)
+	t.Logf("head res, %+v", res)
 	if err != nil {
 		t.Log("aws head error", err)
 		t.Fail()
 	}
-
-	// head, err = strconv.Atoi(res["head"])
-	// if err != nil || head != S3ExpectHead {
-	// 	t.Log("aws get head fail, res:", res, "err:", err)
-	// 	t.Fail()
-	// }
 
 	attributes = append(attributes, "length")
 	res, err = cmp.Head(ctx, headGuid, attributes)
@@ -168,6 +164,7 @@ func TestS3_Head(t *testing.T) {
 	// head, err = strconv.Atoi(res["head"])
 	// length, err = strconv.Atoi(res["length"])
 	contentLength, err := strconv.Atoi(res["Content-Length"])
+	assert.NoError(t, err)
 	fmt.Printf("res------------->"+"%+v\n", res["Content-Length"])
 	assert.Equal(t, len(obj), contentLength)
 }
@@ -183,7 +180,7 @@ func TestS3_Get(t *testing.T) {
 	assert.NoError(t, err)
 	defer res1.Close()
 
-	byteRes, _ := ioutil.ReadAll(res1)
+	byteRes, _ := io.ReadAll(res1)
 	assert.Equal(t, S3Content, string(byteRes))
 }
 
@@ -194,25 +191,54 @@ func TestS3_SignURL(t *testing.T) {
 	assert.NotEmpty(t, res)
 }
 
-func TestS3_ListObject(t *testing.T) {
+func TestS3_ListObjects(t *testing.T) {
 	ctx := context.TODO()
 
 	err := awsCmp.Put(ctx, S3Guid, strings.NewReader(S3Content), nil)
 	assert.NoError(t, err)
 
-	err = awsCmp.Put(ctx, S3Guid+"-1", strings.NewReader(S3Content), nil)
-	assert.NoError(t, err)
+	// 构造数据 guid, guid-1, guid-2, guid-3, guid-4, guid-5
+	var keys []string
+	for i := 1; i <= 10; i++ {
+		key := S3Guid + "-" + cast.ToString(i)
+		keys = append(keys, key)
+	}
+	for _, key := range keys {
+		err = awsCmp.Put(ctx, key, strings.NewReader(S3Content), nil)
+		assert.NoError(t, err)
+	}
 
-	err = awsCmp.Put(ctx, S3Guid+"-2", strings.NewReader(S3Content), nil)
-	assert.NoError(t, err)
+	// 供测试使用，防止极端情况下无限请求对象存储造成API费用，一般业务无需使用这个计数器
+	currentReq := 0
 
-	err = awsCmp.Put(ctx, S3Guid+"-3", strings.NewReader(S3Content), nil)
-	assert.NoError(t, err)
+	// 预计从 guid-1 开始列举 (不包含guid-1)，每次列举2(maxKeys)个对象。结果应该是
+	// 第一次:guid-2,guid-3;
+	// 第二次:guid-4,guid-5;
+	// 第三次:guid-6
+	var ct *string
+	ops := []ListObjectsOption{ListWithPrefix(S3Guid), ListWithStartAfter(S3Guid + "-1"), ListWithMaxKeys(2)}
+	for {
+		// 供测试使用，防止极端情况下无限请求对象存储造成API费用，一般业务无需使用这个计数器
+		if currentReq > 10 {
+			break
+		}
+		currentReq++
 
-	res, err := awsCmp.ListObject(ctx, "", S3Guid, S3Guid+"-1", 10, "")
-	t.Log("res info", res)
-	assert.NoError(t, err)
-	assert.NotEqual(t, 0, len(res))
+		res, err := awsCmp.ListObjects(ctx, ct, ops...)
+		t.Log("res info", res)
+		resRes, _ := json.Marshal(res)
+		fmt.Printf("res--------------->"+"%s\n", string(resRes))
+		assert.NoError(t, err)
+		assert.NotEqual(t, 0, len(res.Objects))
+
+		// 已经到对象列表末尾
+		if !*res.IsTruncated {
+			return
+		}
+
+		ct = res.NextContinuationToken
+		time.Sleep(1 * time.Second)
+	}
 }
 
 func TestS3_Del(t *testing.T) {
@@ -259,15 +285,17 @@ func TestS3_Range(t *testing.T) {
 	cmp := newS3Cmp(os.Getenv("BUCKET"), "")
 
 	ctx := context.TODO()
-	cmp.Del(ctx, guid)
+	err := cmp.Del(ctx, guid)
+	assert.NoError(t, err)
+
 	meta := make(map[string]string)
-	err := cmp.Put(ctx, guid, strings.NewReader("123456"), meta)
+	err = cmp.Put(ctx, guid, strings.NewReader("123456"), meta)
 	assert.NoError(t, err)
 
 	res, err := cmp.Range(ctx, guid, 3, 3)
 	assert.NoError(t, err)
 
-	byteRes, err := ioutil.ReadAll(res)
+	byteRes, err := io.ReadAll(res)
 	assert.NoError(t, err)
 	assert.Equal(t, "456", string(byteRes))
 }
