@@ -3,14 +3,15 @@ package eos
 import (
 	"bytes"
 	"context"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"github.com/stretchr/testify/suite"
 	"io"
 	"os"
 	"path"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 )
 
 type LocalFileTestSuite struct {
@@ -20,7 +21,7 @@ type LocalFileTestSuite struct {
 }
 
 func (s *LocalFileTestSuite) SetupSuite() {
-	s.path = path.Join(os.TempDir(), "local_file_test")
+	s.path = path.Join("./", "local_file_test")
 	err := os.MkdirAll(s.path, os.ModePerm)
 	require.NoError(s.T(), err)
 	oss, err := NewLocalFile(s.path)
@@ -28,9 +29,9 @@ func (s *LocalFileTestSuite) SetupSuite() {
 	s.oss = oss
 }
 
-func (s *LocalFileTestSuite) TearDownSuite() {
-	_ = os.RemoveAll(s.path)
-}
+//func (s *LocalFileTestSuite) TearDownSuite() {
+//	_ = os.RemoveAll(s.path)
+//}
 
 func (s *LocalFileTestSuite) TestCRUD() {
 	testCases := []struct {
@@ -81,6 +82,53 @@ func (s *LocalFileTestSuite) TestCRUD() {
 	}
 }
 
+func (s *LocalFileTestSuite) TestPutAndGet() {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+	key1 := "TestDelMulti_KEY1"
+	key2 := "TestDelMulti_KEY2"
+	err := s.oss.Put(ctx, key1, bytes.NewReader([]byte("hello")), nil, nil)
+	require.NoError(s.T(), err)
+	err = s.oss.Put(ctx, key2, bytes.NewReader([]byte("hello")), nil, nil)
+	require.NoError(s.T(), err)
+	contentValue, err := s.oss.Get(ctx, key1)
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), "hello", contentValue)
+}
+
+func (s *LocalFileTestSuite) TestPutAndGetWithMeta() {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+	key := "TestPutAndGetMetaKey1"
+	err := s.oss.Put(ctx, key, bytes.NewReader([]byte("hello")), map[string]string{
+		"hello": "askuy",
+	}, nil)
+	require.NoError(s.T(), err)
+	contentValue, meta, err := s.oss.GetWithMeta(ctx, key, []string{"hello"})
+	assert.NoError(s.T(), err)
+	info, err := io.ReadAll(contentValue)
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), "hello", string(info))
+	assert.Equal(s.T(), map[string]string{
+		"hello": "askuy",
+	}, meta)
+}
+
+func (s *LocalFileTestSuite) TestPutAndGetMeta() {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+	key := "TestPutAndGetMetaKey1"
+	err := s.oss.Put(ctx, key, bytes.NewReader([]byte("hello")), map[string]string{
+		"hello": "askuy",
+	}, nil)
+	require.NoError(s.T(), err)
+	meta, err := s.oss.Head(ctx, key, []string{"hello"})
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), map[string]string{
+		"hello": "askuy",
+	}, meta)
+}
+
 func (s *LocalFileTestSuite) TestDelMulti() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
@@ -104,8 +152,6 @@ func (s *LocalFileTestSuite) TestGetXX() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 	key1 := "TestGetXX_KEY1"
-	err := s.oss.PutAndCompress(ctx, key1, bytes.NewReader([]byte("hello")), map[string]string{"hello": "world"}, nil)
-	require.NoError(s.T(), err)
 	rd, meta, err := s.oss.GetWithMeta(ctx, key1, []string{"hello"})
 	require.NoError(s.T(), err)
 	assert.Equal(s.T(), map[string]string{"hello": "world"}, meta)
@@ -122,14 +168,6 @@ func (s *LocalFileTestSuite) TestGetXX() {
 	require.NoError(s.T(), err)
 	assert.Equal(s.T(), "hello", string(data))
 
-	str, err := s.oss.GetAndDecompress(ctx, key1)
-	require.NoError(s.T(), err)
-	assert.Equal(s.T(), "hello", str)
-
-	rd, err = s.oss.GetAndDecompressAsReader(ctx, key1)
-	data, err = io.ReadAll(rd)
-	require.NoError(s.T(), err)
-	assert.Equal(s.T(), "hello", string(data))
 }
 
 func TestLocalFile(t *testing.T) {

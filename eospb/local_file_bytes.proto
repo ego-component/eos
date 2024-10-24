@@ -1,0 +1,10 @@
+syntax = "proto3";
+package eospb;
+
+option go_package = "eospb";
+
+// LocalFile 段
+message LocalFileSegment {
+  // Header
+  map<string,string> header = 1;
+}

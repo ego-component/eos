@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/ego-component/eos/eospb"
+	"github.com/golang/protobuf/proto"
 	"go.uber.org/multierr"
 )
 
@@ -24,16 +26,12 @@ type LocalFile struct {
 	// all files are stored here.
 	path string
 	l    sync.Mutex
-	// store in memory
-	// TODO persistent
-	meta map[string]map[string]string
 }
 
 func NewLocalFile(path string) (*LocalFile, error) {
 	err := os.MkdirAll(path, os.ModePerm)
 	return &LocalFile{
 		path: path,
-		meta: make(map[string]map[string]string),
 	}, err
 }
 
@@ -57,7 +55,14 @@ func (l *LocalFile) GetBytes(ctx context.Context, key string, options ...GetOpti
 	defer rd.Close()
 	var buf bytes.Buffer
 	_, err = io.Copy(&buf, rd)
-	return buf.Bytes(), err
+
+	fileBytes := buf.Bytes()
+	buffer := writeBuffer()
+	buffer.Put(buf.Bytes())
+	// 获取内容长度
+	headerLength := buffer.Get32ByOffset(0)
+	contentLength := buffer.Get32ByOffset(4)
+	return fileBytes[8+headerLength : 8+headerLength+contentLength], err
 }
 
 // GetAsReader returns reader which you need to close it.
@@ -71,50 +76,81 @@ func (l *LocalFile) GetAsReader(ctx context.Context, key string, options ...GetO
 }
 
 func (l *LocalFile) GetWithMeta(ctx context.Context, key string, attributes []string, options ...GetOptions) (io.ReadCloser, map[string]string, error) {
-	data, err := l.GetAsReader(ctx, key)
+	rd, err := l.GetAsReader(ctx, key)
 	if err != nil {
 		return nil, nil, err
 	}
-	meta, err := l.Head(ctx, key, attributes)
+	defer rd.Close()
+	var buf bytes.Buffer
+	_, err = io.Copy(&buf, rd)
+
+	fileBytes := buf.Bytes()
+	buffer := writeBuffer()
+	buffer.Put(buf.Bytes())
+	// 获取内容长度
+	headerLength := buffer.Get32ByOffset(0)
+	contentLength := buffer.Get32ByOffset(4)
+
+	metaBytes := buffer.GetByOffsetAndLength(8, headerLength)
+	headerProto := eospb.LocalFileSegment{}
+	err = proto.Unmarshal(metaBytes, &headerProto)
 	if err != nil {
 		return nil, nil, err
 	}
-	return data, meta, nil
+
+	meta := make(map[string]string)
+	for _, v := range attributes {
+		meta[v] = headerProto.Header[v]
+	}
+
+	return io.NopCloser(bytes.NewBuffer(fileBytes[8+headerLength : 8+headerLength+contentLength])), meta, nil
 }
 
-func (l *LocalFile) GetAndDecompress(ctx context.Context, key string) (string, error) {
-	return l.Get(ctx, key)
-}
-
-func (l *LocalFile) GetAndDecompressAsReader(ctx context.Context, key string) (io.ReadCloser, error) {
-	return l.GetAsReader(ctx, key)
-}
+//
+//func (l *LocalFile) GetAndDecompress(ctx context.Context, key string) (string, error) {
+//	return l.Get(ctx, key)
+//}
+//
+//func (l *LocalFile) GetAndDecompressAsReader(ctx context.Context, key string) (io.ReadCloser, error) {
+//	return l.GetAsReader(ctx, key)
+//}
 
 // Put override the file
 // It will create two files, one for content, one for meta.
 func (l *LocalFile) Put(ctx context.Context, key string, reader io.Reader, meta map[string]string, options ...PutOptions) error {
 	filename := l.initDir(key)
-	l.l.Lock()
-	l.meta[key] = meta
-	l.l.Unlock()
 	f, err := os.OpenFile(filename, os.O_TRUNC|os.O_RDWR|os.O_CREATE, 0660)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	_, err = io.Copy(f, reader)
+
+	bufferWriter := writeBuffer()
+
+	header := &eospb.LocalFileSegment{
+		Header: meta,
+	}
+	headerBytes, err := proto.Marshal(header)
+	if err != nil {
+		return err
+	}
+	var contentBytes bytes.Buffer
+	_, err = io.Copy(&contentBytes, reader)
+
+	bufferWriter.Put32(uint32(len(headerBytes)))
+	bufferWriter.Put32(uint32(len(contentBytes.Bytes())))
+	bufferWriter.Put(headerBytes)
+	bufferWriter.Put(contentBytes.Bytes())
+	_, err = f.Write(bufferWriter.Buffer())
 	return err
 }
 
-func (l *LocalFile) PutAndCompress(ctx context.Context, key string, reader io.Reader, meta map[string]string, options ...PutOptions) error {
-	return l.Put(ctx, key, reader, meta)
-}
+//func (l *LocalFile) PutAndCompress(ctx context.Context, key string, reader io.Reader, meta map[string]string, options ...PutOptions) error {
+//	return l.Put(ctx, key, reader, meta)
+//}
 
 func (l *LocalFile) Del(ctx context.Context, key string) error {
 	filename := l.initDir(key)
-	l.l.Lock()
-	delete(l.meta, key)
-	l.l.Unlock()
 	return os.Remove(filename)
 }
 
@@ -130,15 +166,28 @@ func (l *LocalFile) DelMulti(ctx context.Context, keys []string) error {
 }
 
 func (l *LocalFile) Head(ctx context.Context, key string, attributes []string) (map[string]string, error) {
-	l.l.Lock()
-	defer l.l.Unlock()
-	fileMeta, ok := l.meta[key]
-	if !ok {
-		return map[string]string{}, nil
+	rd, err := l.GetAsReader(ctx, key)
+	if err != nil || rd == nil {
+		return nil, err
 	}
+	defer rd.Close()
+	var buf bytes.Buffer
+	_, err = io.Copy(&buf, rd)
+
+	buffer := writeBuffer()
+	buffer.Put(buf.Bytes())
+	// 获取内容长度
+	headerLength := buffer.Get32ByOffset(0)
+	metaBytes := buffer.GetByOffsetAndLength(8, headerLength)
+	headerProto := eospb.LocalFileSegment{}
+	err = proto.Unmarshal(metaBytes, &headerProto)
+	if err != nil {
+		return nil, err
+	}
+
 	meta := make(map[string]string)
 	for _, v := range attributes {
-		meta[v] = fileMeta[v]
+		meta[v] = headerProto.Header[v]
 	}
 	return meta, nil
 }
@@ -152,14 +201,31 @@ func (l *LocalFile) SignURL(ctx context.Context, key string, expired int64, opti
 }
 
 func (l *LocalFile) Range(ctx context.Context, key string, offset int64, length int64) (io.ReadCloser, error) {
-	panic("implement me")
+	rd, err := l.GetAsReader(ctx, key)
+	if err != nil || rd == nil {
+		return nil, err
+	}
+	defer rd.Close()
+	var buf bytes.Buffer
+	_, err = io.Copy(&buf, rd)
+
+	fileBytes := buf.Bytes()
+	buffer := writeBuffer()
+	buffer.Put(buf.Bytes())
+	// 获取内容长度
+	headerLength := buffer.Get32ByOffset(0)
+	contentLength := buffer.Get32ByOffset(4)
+	uint32Length := uint32(length)
+	if uint32Length > contentLength {
+		uint32Length = contentLength
+	}
+
+	return io.NopCloser(bytes.NewBuffer(fileBytes[8+headerLength+uint32(offset) : 8+headerLength+uint32(offset)+uint32Length])), nil
+
 }
 
 func (l *LocalFile) Exists(ctx context.Context, key string) (bool, error) {
-	l.l.Lock()
-	defer l.l.Unlock()
-	_, ok := l.meta[key]
-	return ok, nil
+	panic("implement me")
 }
 
 func (l *LocalFile) Copy(ctx context.Context, srcKey, dstKey string, options ...CopyOption) error {

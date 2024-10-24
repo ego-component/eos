@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/gotomicro/ego/core/econf"
 	"github.com/gotomicro/ego/core/elog"
 
@@ -45,4 +47,13 @@ ssl = false
 
 	storage := cmp.Client("composePayload")
 	storage.Get(context.Background(), "aaa")
+	// The session the S3 Uploader will use
+
+	sess := session.Must(session.NewSession(awsConfig))
+	s3manager.NewDownloader()
+	// Create an uploader with the session and default options
+
+	uploader := s3manager.NewUploader(sess)
+
+	strings.NewReader
 }
