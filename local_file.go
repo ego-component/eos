@@ -26,7 +26,7 @@ type LocalFile struct {
 	// path is the content root
 	// all files are stored here.
 	path string
-	//lint:ignore U1000
+	//nolint:unused
 	l sync.Mutex
 }
 
@@ -120,7 +120,6 @@ func (l *LocalFile) Put(ctx context.Context, key string, reader io.Reader, meta 
 	defer f.Close()
 
 	bufferWriter := writeBuffer()
-
 	header := &eospb.LocalFileSegment{
 		Header: meta,
 	}
@@ -218,7 +217,6 @@ func (l *LocalFile) Range(ctx context.Context, key string, offset int64, length 
 	}
 
 	return io.NopCloser(bytes.NewBuffer(fileBytes[8+headerLength+uint32(offset) : 8+headerLength+uint32(offset)+uint32Length])), nil
-
 }
 
 func (l *LocalFile) Exists(ctx context.Context, key string) (bool, error) {

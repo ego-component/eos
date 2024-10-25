@@ -32,7 +32,7 @@ func (b *Buffer) Buffer() []byte {
 // Grow 简单点，先按成倍翻倍
 func (b *Buffer) Grow(i int) {
 	// 这里还可以优化
-	//b.buf = append(b.buf, make([]byte, 2*len(b.buf)+i)...)
+	// b.buf = append(b.buf, make([]byte, 2*len(b.buf)+i)...)
 	b.buf = append(b.buf, make([]byte, i)...)
 }
 

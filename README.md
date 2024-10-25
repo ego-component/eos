@@ -1,4 +1,4 @@
-# EOSS: Wrapper For Aliyun OSS And Amazon S3
+# EOS: Wrapper For Aliyun OSS And Amazon S3
 
 awos for node: https://github.com/shimohq/awos-js
 
@@ -26,7 +26,7 @@ storageType = "oss" # oss|s3
 accessKeyID = "xxx"
 accessKeySecret = "xxx"
 endpoint = "oss-cn-beijing.aliyuncs.com"
-bucket = "aaa" # 定义默认storage实例
+bucket = "my-bucket" # 定义默认storage实例
 shards = []
   # 定义其他storage实例
   [storage.buckets.template] 
@@ -44,27 +44,36 @@ shards = []
 import "github.com/ego-component/eos"
 
 // 构建 os component
-cmp := eoss.Load("storage").Build()
+func main() {
+  cmp := eos.Load("storage").Build()
+
+  res, err := cmp.Get(context.Background(), "key")
+  if err != nil {
+    log.Println("Get fail", err)
+	return
+  }
+  
+  fmt.Printf("res--------------->"+"%+v\n", res) 
+}
 ```
 
 Available operations：
 
 ```golang
+GetBucketName(ctx context.Context, key string) (string, error)
 Get(ctx context.Context, key string, options ...GetOptions) (string, error)
 GetBytes(ctx context.Context, key string, options ...GetOptions) ([]byte, error)
 GetAsReader(ctx context.Context, key string, options ...GetOptions) (io.ReadCloser, error)
 GetWithMeta(ctx context.Context, key string, attributes []string, options ...GetOptions) (io.ReadCloser, map[string]string, error)
-Put(ctx context.Context, key string, reader io.ReadSeeker, meta map[string]string, options ...PutOptions) error
+Put(ctx context.Context, key string, reader io.Reader, meta map[string]string, options ...PutOptions) error
 Del(ctx context.Context, key string) error
 DelMulti(ctx context.Context, keys []string) error
 Head(ctx context.Context, key string, meta []string) (map[string]string, error)
-ListObject(ctx context.Context, key string, prefix string, marker string, maxKeys int, delimiter string) ([]string, error)
-SignURL(ctx context.Context, key string, expired int64) (string, error)
-GetAndDecompress(ctx context.Context, key string) (string, error)
-GetAndDecompressAsReader(ctx context.Context, key string) (io.ReadCloser, error)
-CompressAndPut(ctx context.Context, key string, reader io.ReadSeeker, meta map[string]string, options ...PutOptions) error
+ListObjects(ctx context.Context, continuationToken *string, options ...ListObjectsOption) (*ListObjectsResult, error)
+SignURL(ctx context.Context, key string, expired int64, options ...SignOptions) (string, error)
 Range(ctx context.Context, key string, offset int64, length int64) (io.ReadCloser, error)
-Exists(ctx context.Context, key string)(bool, error)
+Exists(ctx context.Context, key string) (bool, error)
+Copy(ctx context.Context, srcKey, dstKey string, options ...CopyOption) error
 ```
 
 https://aws.github.io/aws-sdk-go-v2/docs/migrating/

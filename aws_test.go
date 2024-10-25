@@ -216,7 +216,7 @@ func TestS3_ListObjects(t *testing.T) {
 	// 第二次:guid-4,guid-5;
 	// 第三次:guid-6
 	var ct *string
-	ops := []ListObjectsOption{ListWithPrefix(S3Guid), ListWithStartAfter(S3Guid + "-1"), ListWithMaxKeys(2)}
+	opts := []ListObjectsOption{ListWithPrefix(S3Guid), ListWithStartAfter(S3Guid + "-1"), ListWithMaxKeys(2)}
 	for {
 		// 供测试使用，防止极端情况下无限请求对象存储造成API费用，一般业务无需使用这个计数器
 		if currentReq > 10 {
@@ -224,7 +224,7 @@ func TestS3_ListObjects(t *testing.T) {
 		}
 		currentReq++
 
-		res, err := awsCmp.ListObjects(ctx, ct, ops...)
+		res, err := awsCmp.ListObjects(ctx, ct, opts...)
 		t.Log("res info", res)
 		resRes, _ := json.Marshal(res)
 		fmt.Printf("res--------------->"+"%s\n", string(resRes))

@@ -42,7 +42,6 @@ s3ForcePathStyle = false
 region = "%s"
 ssl = false
 shards = [%s]
-compressLimit = 0
 prefix = "abc-01"
 `
 

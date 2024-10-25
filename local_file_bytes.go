@@ -1,6 +1,6 @@
 package eos
 
-//lint:ignore U1000
+//nolint:unused
 type localFileBytes struct {
 	HeaderLength  uint32
 	ContentLength uint32

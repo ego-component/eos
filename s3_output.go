@@ -55,6 +55,7 @@ func (h *HeadGetObjectOutputWrapper) metaData() map[string]string {
 func mergeHttpStandardHeaders(output *HeadGetObjectOutputWrapper) map[string]*string {
 	res := make(map[string]*string)
 	for k, v := range output.metaData() {
+		// NOTE: 新版Golang应该不用做这个处理了
 		val := v
 		res[k] = &val
 	}

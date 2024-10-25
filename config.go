@@ -46,10 +46,6 @@ type BucketConfig struct {
 	EnableMetricInterceptor bool
 	// EnableClientTrace
 	EnableClientTrace bool
-	// CompressType gzip
-	CompressType string
-	// CompressLimit 大于该值之后才压缩 单位字节
-	CompressLimit int64
 	// MaxIdleConns 设置最大空闲连接数
 	MaxIdleConns int
 	// MaxIdleConnsPerHost 设置长连接个数
