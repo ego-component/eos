@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"go.uber.org/multierr"
 	"google.golang.org/protobuf/proto"
 
@@ -236,6 +237,18 @@ func (l *LocalFile) Copy(ctx context.Context, srcKey, dstKey string, options ...
 	}
 	_, err = io.Copy(dstFile, srcFile)
 	return err
+}
+
+func (l *LocalFile) CreateMultipartUpload(ctx context.Context, key string) (*CreateMultipartUploadResult, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (l *LocalFile) CompleteMultipartUpload(ctx context.Context, key string, uploadID string, parts []MultiUploadCompletedPart) error {
+	return errors.New("not implemented")
+}
+
+func (l *LocalFile) SignUploadPartURL(ctx context.Context, key, uploadId string, partNumber int32, expired int64, options ...SignOptions) (*v4.PresignedHTTPRequest, error) {
+	return nil, errors.New("not implemented")
 }
 
 // initDir returns the entire path

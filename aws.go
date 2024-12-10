@@ -11,6 +11,7 @@ import (
 
 	"github.com/avast/retry-go"
 	"github.com/aws/aws-sdk-go-v2/aws"
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
@@ -405,6 +406,76 @@ func (s *S3) Exists(ctx context.Context, key string) (bool, error) {
 		return false, nil
 	}
 	return false, err
+}
+
+func (s *S3) CreateMultipartUpload(ctx context.Context, key string) (*CreateMultipartUploadResult, error) {
+	bucketName, key, err := s.getBucketAndKey(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+
+	input := &s3.CreateMultipartUploadInput{
+		Bucket: aws.String(bucketName),
+		Key:    aws.String(key),
+	}
+
+	resp, err := s.client.CreateMultipartUpload(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	return newCreateMultiUploadResFromS3(resp), nil
+}
+
+func (s *S3) CompleteMultipartUpload(ctx context.Context, key, uploadId string, parts []MultiUploadCompletedPart) error {
+	bucketName, key, err := s.getBucketAndKey(ctx, key)
+	if err != nil {
+		return err
+	}
+
+	input := &s3.CompleteMultipartUploadInput{
+		Bucket: aws.String(bucketName),
+		Key:    aws.String(key),
+		MultipartUpload: &types.CompletedMultipartUpload{
+			Parts: newMultiUploadCompletedPartsToS3(parts),
+		},
+		UploadId: aws.String(uploadId),
+	}
+
+	_, err = s.client.CompleteMultipartUpload(ctx, input)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *S3) SignUploadPartURL(ctx context.Context, key, uploadId string, partNumber int32, expired int64, options ...SignOptions) (*v4.PresignedHTTPRequest, error) {
+	bucketName, key, err := s.getBucketAndKey(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	input := &s3.UploadPartInput{
+		Bucket:     aws.String(bucketName),
+		Key:        aws.String(key),
+		PartNumber: &partNumber,
+		UploadId:   aws.String(uploadId),
+	}
+	so := DefaultSignOptions()
+	for _, opt := range options {
+		opt(so)
+	}
+	if so.process != nil {
+		panic("process option is not supported for s3")
+	}
+	req, err := s.presignClient.PresignUploadPart(ctx, input, func(options *s3.PresignOptions) {
+		options.Expires = time.Duration(expired) * time.Second
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
 }
 
 func (s *S3) get(ctx context.Context, key string, options ...GetOptions) (*s3.GetObjectOutput, error) {

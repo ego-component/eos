@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -12,6 +13,8 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/gotomicro/ego/core/econf"
 	"github.com/spf13/cast"
 	"github.com/stretchr/testify/assert"
@@ -318,4 +321,72 @@ func TestS3_Exists(t *testing.T) {
 	ok, err = awsCmp.Exists(ctx, guid)
 	assert.NoError(t, err)
 	assert.Equal(t, false, ok)
+}
+
+func TestS3_MultipartUpload(t *testing.T) {
+	ctx := context.TODO()
+
+	// ------- MAKE SURE TO SET THESE ENVIRONMENT VARIABLES -----------
+	key := os.Getenv("MULTI_KEY")
+	partPathPrefix := os.Getenv("MULTI_PART_PATH_PREFIX")
+	// ----------------------------------------------------------------
+
+	// create multipart upload task
+	createRes, err := awsCmp.CreateMultipartUpload(ctx, key)
+	assert.NoError(t, err)
+
+	// sign upload parts
+	uploadReqs := make([]v4.PresignedHTTPRequest, 0, 2)
+	for i := 0; i < 2; i++ {
+		signRes, err := awsCmp.SignUploadPartURL(ctx, key, *createRes.UploadId, int32(i+1), 600)
+		assert.NoError(t, err)
+		uploadReqs = append(uploadReqs, *signRes)
+	}
+
+	etagMap := make(map[int]string)
+
+	// do upload parts
+	for i, r := range uploadReqs {
+		// part_0, part_1
+		filePath, _ := os.Open(fmt.Sprintf(`%s_%d`, partPathPrefix, i))
+		fstat, _ := filePath.Stat()
+		c := &http.Client{}
+		req, e := http.NewRequest(r.Method, r.URL, filePath)
+		assert.NoError(t, e)
+
+		req.Header.Add("Content-Type", "application/octet-stream")
+		req.ContentLength = fstat.Size()
+		for k, v := range r.SignedHeader {
+			req.Header.Add(k, v[0])
+		}
+
+		res, e := c.Do(req)
+		assert.NoError(t, e)
+
+		_, e = io.ReadAll(res.Body)
+		assert.NoError(t, e)
+		assert.Equal(t, res.StatusCode, 200)
+
+		etagKey := "Etag"
+		etag := res.Header[etagKey][0]
+		etagMap[i+1] = strings.Trim(etag, `"`)
+	}
+
+	parts := make([]MultiUploadCompletedPart, 0, 2)
+	for i, etag := range etagMap {
+		parts = append(parts, MultiUploadCompletedPart{
+			ETag:       aws.String(etag),
+			PartNumber: aws.Int32(int32(i)),
+		})
+	}
+
+	// complete multipart upload task
+	err = awsCmp.CompleteMultipartUpload(ctx, key, *createRes.UploadId, parts)
+	assert.NoError(t, err)
+
+	// download uploaded file
+	downloadUrl, err := awsCmp.SignURL(ctx, key, 60)
+	assert.NoError(t, err)
+
+	fmt.Println("downloadUrl:\n", downloadUrl)
 }

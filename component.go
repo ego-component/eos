@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -101,4 +102,19 @@ func (c *Component) SignURL(ctx context.Context, key string, expired int64, opti
 // Exists checks whether the object exists
 func (c *Component) Exists(ctx context.Context, key string) (bool, error) {
 	return c.defaultClient.Exists(ctx, key)
+}
+
+// CreateMultipartUpload creates a multipart upload task
+func (c *Component) CreateMultipartUpload(ctx context.Context, key string) (*CreateMultipartUploadResult, error) {
+	return c.defaultClient.CreateMultipartUpload(ctx, key)
+}
+
+// CompleteMultipartUpload completes the multipart upload task
+func (c *Component) CompleteMultipartUpload(ctx context.Context, key string, uploadID string, parts []MultiUploadCompletedPart) error {
+	return c.defaultClient.CompleteMultipartUpload(ctx, key, uploadID, parts)
+}
+
+// SignUploadPartURL generates an authorization link to upload a part of the object
+func (c *Component) SignUploadPartURL(ctx context.Context, key, uploadID string, partNumber int32, expired int64, options ...SignOptions) (*v4.PresignedHTTPRequest, error) {
+	return c.defaultClient.SignUploadPartURL(ctx, key, uploadID, partNumber, expired, options...)
 }
