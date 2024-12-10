@@ -11,6 +11,7 @@ import (
 
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"github.com/avast/retry-go"
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/samber/lo"
 )
 
@@ -323,6 +324,18 @@ func (o *OSS) Exists(ctx context.Context, key string) (bool, error) {
 		return false, err
 	}
 	return bucket.IsObjectExist(key, oss.WithContext(ctx))
+}
+
+func (o *OSS) CreateMultipartUpload(ctx context.Context, key string) (*CreateMultipartUploadResult, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (o *OSS) CompleteMultipartUpload(ctx context.Context, key string, uploadID string, parts []MultiUploadCompletedPart) error {
+	return errors.New("not implemented")
+}
+
+func (o *OSS) SignUploadPartURL(ctx context.Context, key, uploadId string, partNumber int32, expired int64, options ...SignOptions) (*v4.PresignedHTTPRequest, error) {
+	return nil, errors.New("not implemented")
 }
 
 func (o *OSS) get(ctx context.Context, key string, options *getOptions) (*oss.GetObjectResult, error) {

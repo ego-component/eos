@@ -13,6 +13,7 @@ import (
 
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"github.com/aws/aws-sdk-go-v2/aws"
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -40,6 +41,9 @@ type Client interface {
 	Range(ctx context.Context, key string, offset int64, length int64) (io.ReadCloser, error)
 	Exists(ctx context.Context, key string) (bool, error)
 	Copy(ctx context.Context, srcKey, dstKey string, options ...CopyOption) error
+	CreateMultipartUpload(ctx context.Context, key string) (*CreateMultipartUploadResult, error)
+	CompleteMultipartUpload(ctx context.Context, key string, uploadID string, parts []MultiUploadCompletedPart) error
+	SignUploadPartURL(ctx context.Context, key, uploadId string, partNumber int32, expired int64, options ...SignOptions) (*v4.PresignedHTTPRequest, error)
 }
 
 func newStorage(name string, cfg *BucketConfig, logger *elog.Component) (Client, error) {
@@ -209,4 +213,30 @@ type ListObjectsResult struct {
 	Objects               []*Object
 	NextContinuationToken *string
 	IsTruncated           *bool
+}
+
+type CreateMultipartUploadResult struct {
+	UploadId *string
+}
+
+func newCreateMultiUploadResFromS3(res *s3.CreateMultipartUploadOutput) *CreateMultipartUploadResult {
+	return &CreateMultipartUploadResult{
+		UploadId: res.UploadId,
+	}
+}
+
+type MultiUploadCompletedPart struct {
+	ETag       *string
+	PartNumber *int32
+}
+
+func newMultiUploadCompletedPartsToS3(parts []MultiUploadCompletedPart) []types.CompletedPart {
+	res := make([]types.CompletedPart, len(parts))
+	for i, part := range parts {
+		res[i] = types.CompletedPart{
+			ETag:       part.ETag,
+			PartNumber: part.PartNumber,
+		}
+	}
+	return res
 }
