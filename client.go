@@ -123,6 +123,9 @@ func newOSS(name string, cfg *BucketConfig, logger *elog.Component) (Client, err
 	if cfg.Debug {
 		opts = append(opts, oss.SetLogLevel(oss.Debug))
 	}
+	if !cfg.SSL {
+		opts = append(opts, oss.InsecureSkipVerify(true))
+	}
 	client, err := oss.New(cfg.Endpoint, cfg.AccessKeyID, cfg.AccessKeySecret, opts...)
 	if err != nil {
 		return nil, err

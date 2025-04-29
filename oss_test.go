@@ -320,10 +320,24 @@ func TestOSS_Copy(t *testing.T) {
 	err = ossCmp.Del(ctx, guidCopyDst)
 	assert.NoError(t, err)
 
-	err = ossCmp.Copy(ctx, guidCopySrc, guidCopyDst, CopyWithRawSrcKey())
+	// 测试 rawSrcKey 模式 （跨 bucket 复制）
+	rawSrcKey := fmt.Sprintf("/%s/%s", os.Getenv("BUCKET"), guidCopySrc)
+	err = ossCmp.Copy(ctx, rawSrcKey, guidCopyDst, CopyWithRawSrcKey())
 	assert.NoError(t, err)
 
 	ok, err := ossCmp.Exists(ctx, guidCopyDst)
 	assert.NoError(t, err)
 	assert.Equal(t, true, ok)
+
+	// 测试同 bucket 模式
+	err = ossCmp.Del(ctx, guidCopyDst)
+	assert.NoError(t, err)
+
+	err = ossCmp.Copy(ctx, guidCopySrc, guidCopyDst)
+	assert.NoError(t, err)
+
+	ok, err = ossCmp.Exists(ctx, guidCopyDst)
+	assert.NoError(t, err)
+	assert.Equal(t, true, ok)
+
 }

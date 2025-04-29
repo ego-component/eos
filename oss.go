@@ -30,6 +30,14 @@ func (ossClient *OSS) keyWithPrefix(key string) string {
 	return ossClient.cfg.Prefix + key
 }
 
+func extractBucketFromRawSrcKey(rawSrcKey string) (bucketName, key string, err error) {
+	parts := strings.SplitN(strings.TrimPrefix(rawSrcKey, "/"), "/", 2)
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("failed to parse rawSrcKey: %s", rawSrcKey)
+	}
+	return parts[0], parts[1], nil
+}
+
 func (ossClient *OSS) Copy(ctx context.Context, srcKey, dstKey string, options ...CopyOption) error {
 	cfg := DefaultCopyOptions()
 	for _, opt := range options {
@@ -65,10 +73,15 @@ func (ossClient *OSS) Copy(ctx context.Context, srcKey, dstKey string, options .
 	for k, v := range cfg.meta {
 		ossOptions = append(ossOptions, oss.Meta(k, v))
 	}
-	_, err = bucket.CopyObject(srcKeyWithBucket, dstKey, ossOptions...)
+	bucketName, keyName, err := extractBucketFromRawSrcKey(srcKeyWithBucket)
 	if err != nil {
 		return err
 	}
+	_, err = bucket.CopyObjectFrom(bucketName, keyName, dstKey, ossOptions...)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
