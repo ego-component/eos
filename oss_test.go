@@ -20,6 +20,8 @@ import (
 
 const (
 	guid         = "test123"
+	guidCopySrc  = "guid-copy-src"
+	guidCopyDst  = "guid-copy-dst"
 	content      = "aaaaaa"
 	expectLength = 6
 	expectHead   = 1
@@ -304,4 +306,24 @@ func TestOSS_Exists(t *testing.T) {
 	ok, err = ossCmp.Exists(ctx, guid)
 	assert.NoError(t, err)
 	assert.Equal(t, false, ok)
+}
+
+func TestOSS_Copy(t *testing.T) {
+	ctx := context.TODO()
+	meta := make(map[string]string)
+	meta["head"] = strconv.Itoa(expectHead)
+	meta["length"] = strconv.Itoa(expectLength)
+
+	err := ossCmp.Put(ctx, guidCopySrc, strings.NewReader(content), meta)
+	assert.NoError(t, err)
+
+	err = ossCmp.Del(ctx, guidCopyDst)
+	assert.NoError(t, err)
+
+	err = ossCmp.Copy(ctx, guidCopySrc, guidCopyDst, CopyWithRawSrcKey())
+	assert.NoError(t, err)
+
+	ok, err := ossCmp.Exists(ctx, guidCopyDst)
+	assert.NoError(t, err)
+	assert.Equal(t, true, ok)
 }

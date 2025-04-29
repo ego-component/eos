@@ -65,7 +65,7 @@ func (ossClient *OSS) Copy(ctx context.Context, srcKey, dstKey string, options .
 	for k, v := range cfg.meta {
 		ossOptions = append(ossOptions, oss.Meta(k, v))
 	}
-	_, err = bucket.CopyObject(dstKey, srcKeyWithBucket, ossOptions...)
+	_, err = bucket.CopyObject(srcKeyWithBucket, dstKey, ossOptions...)
 	if err != nil {
 		return err
 	}
