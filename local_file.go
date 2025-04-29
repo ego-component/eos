@@ -51,7 +51,7 @@ func (l *LocalFile) Get(ctx context.Context, key string, options ...GetOptions) 
 }
 
 func (l *LocalFile) GetBytes(ctx context.Context, key string, options ...GetOptions) ([]byte, error) {
-	rd, err := l.GetAsReader(ctx, key, options...)
+	rd, err := l.getAsReader(ctx, key, options...)
 	if err != nil || rd == nil {
 		return nil, err
 	}
@@ -68,8 +68,29 @@ func (l *LocalFile) GetBytes(ctx context.Context, key string, options ...GetOpti
 	return fileBytes[8+headerLength : 8+headerLength+contentLength], err
 }
 
-// GetAsReader returns reader which you need to close it.
+// pub GetAsReader returns reader which you need to close it.
 func (l *LocalFile) GetAsReader(ctx context.Context, key string, options ...GetOptions) (io.ReadCloser, error) {
+	rd, err := l.getAsReader(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	defer rd.Close()
+	var buf bytes.Buffer
+	if _, err = io.Copy(&buf, rd); err != nil {
+		return nil, err
+	}
+
+	fileBytes := buf.Bytes()
+	buffer := writeBuffer()
+	buffer.Put(buf.Bytes())
+	// 获取内容长度
+	headerLength := buffer.Get32ByOffset(0)
+	contentLength := buffer.Get32ByOffset(4)
+	return io.NopCloser(bytes.NewBuffer(fileBytes[8+headerLength : 8+headerLength+contentLength])), nil
+}
+
+// private getAsReader returns reader which you need to close it.
+func (l *LocalFile) getAsReader(ctx context.Context, key string, options ...GetOptions) (io.ReadCloser, error) {
 	filename := l.initDir(key)
 	file, err := os.Open(filename)
 	if errors.Is(err, os.ErrNotExist) {
@@ -79,7 +100,7 @@ func (l *LocalFile) GetAsReader(ctx context.Context, key string, options ...GetO
 }
 
 func (l *LocalFile) GetWithMeta(ctx context.Context, key string, attributes []string, options ...GetOptions) (io.ReadCloser, map[string]string, error) {
-	rd, err := l.GetAsReader(ctx, key)
+	rd, err := l.getAsReader(ctx, key)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -159,7 +180,7 @@ func (l *LocalFile) DelMulti(ctx context.Context, keys []string) error {
 }
 
 func (l *LocalFile) Head(ctx context.Context, key string, attributes []string) (map[string]string, error) {
-	rd, err := l.GetAsReader(ctx, key)
+	rd, err := l.getAsReader(ctx, key)
 	if err != nil || rd == nil {
 		return nil, err
 	}
@@ -196,7 +217,7 @@ func (l *LocalFile) SignURL(ctx context.Context, key string, expired int64, opti
 }
 
 func (l *LocalFile) Range(ctx context.Context, key string, offset int64, length int64) (io.ReadCloser, error) {
-	rd, err := l.GetAsReader(ctx, key)
+	rd, err := l.getAsReader(ctx, key)
 	if err != nil || rd == nil {
 		return nil, err
 	}
