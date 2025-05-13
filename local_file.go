@@ -78,7 +78,11 @@ func (l *LocalFile) GetAsReader(ctx context.Context, key string, options ...GetO
 	if err != nil {
 		return nil, err
 	}
-	defer rd.Close()
+	defer func() {
+		if rd != nil {
+			rd.Close()
+		}
+	}()
 	var buf bytes.Buffer
 	if _, err = io.Copy(&buf, rd); err != nil {
 		return nil, err
@@ -108,7 +112,11 @@ func (l *LocalFile) GetWithMeta(ctx context.Context, key string, attributes []st
 	if err != nil {
 		return nil, nil, err
 	}
-	defer rd.Close()
+	defer func() {
+		if rd != nil {
+			rd.Close()
+		}
+	}()
 	var buf bytes.Buffer
 	if _, err = io.Copy(&buf, rd); err != nil {
 		return nil, nil, err
@@ -188,7 +196,11 @@ func (l *LocalFile) Head(ctx context.Context, key string, attributes []string) (
 	if err != nil || rd == nil {
 		return nil, err
 	}
-	defer rd.Close()
+	defer func() {
+		if rd != nil {
+			rd.Close()
+		}
+	}()
 	var buf bytes.Buffer
 
 	if _, err = io.Copy(&buf, rd); err != nil {
@@ -225,7 +237,11 @@ func (l *LocalFile) Range(ctx context.Context, key string, offset int64, length 
 	if err != nil || rd == nil {
 		return nil, err
 	}
-	defer rd.Close()
+	defer func() {
+		if rd != nil {
+			rd.Close()
+		}
+	}()
 	var buf bytes.Buffer
 	if _, err = io.Copy(&buf, rd); err != nil {
 		return nil, err
