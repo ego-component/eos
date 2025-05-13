@@ -55,7 +55,11 @@ func (l *LocalFile) GetBytes(ctx context.Context, key string, options ...GetOpti
 	if err != nil || rd == nil {
 		return nil, err
 	}
-	defer rd.Close()
+	defer func() {
+		if rd != nil {
+			rd.Close()
+		}
+	}()
 	var buf bytes.Buffer
 	_, err = io.Copy(&buf, rd)
 
