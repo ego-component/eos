@@ -55,7 +55,11 @@ func (l *LocalFile) GetBytes(ctx context.Context, key string, options ...GetOpti
 	if err != nil || rd == nil {
 		return nil, err
 	}
-	defer rd.Close()
+	defer func() {
+		if rd != nil {
+			rd.Close()
+		}
+	}()
 	var buf bytes.Buffer
 	_, err = io.Copy(&buf, rd)
 
@@ -71,10 +75,14 @@ func (l *LocalFile) GetBytes(ctx context.Context, key string, options ...GetOpti
 // pub GetAsReader returns reader which you need to close it.
 func (l *LocalFile) GetAsReader(ctx context.Context, key string, options ...GetOptions) (io.ReadCloser, error) {
 	rd, err := l.getAsReader(ctx, key)
-	if err != nil {
+	if err != nil || rd == nil {
 		return nil, err
 	}
-	defer rd.Close()
+	defer func() {
+		if rd != nil {
+			rd.Close()
+		}
+	}()
 	var buf bytes.Buffer
 	if _, err = io.Copy(&buf, rd); err != nil {
 		return nil, err
@@ -101,10 +109,14 @@ func (l *LocalFile) getAsReader(ctx context.Context, key string, options ...GetO
 
 func (l *LocalFile) GetWithMeta(ctx context.Context, key string, attributes []string, options ...GetOptions) (io.ReadCloser, map[string]string, error) {
 	rd, err := l.getAsReader(ctx, key)
-	if err != nil {
+	if err != nil || rd == nil {
 		return nil, nil, err
 	}
-	defer rd.Close()
+	defer func() {
+		if rd != nil {
+			rd.Close()
+		}
+	}()
 	var buf bytes.Buffer
 	if _, err = io.Copy(&buf, rd); err != nil {
 		return nil, nil, err
@@ -184,7 +196,11 @@ func (l *LocalFile) Head(ctx context.Context, key string, attributes []string) (
 	if err != nil || rd == nil {
 		return nil, err
 	}
-	defer rd.Close()
+	defer func() {
+		if rd != nil {
+			rd.Close()
+		}
+	}()
 	var buf bytes.Buffer
 
 	if _, err = io.Copy(&buf, rd); err != nil {
@@ -221,7 +237,11 @@ func (l *LocalFile) Range(ctx context.Context, key string, offset int64, length 
 	if err != nil || rd == nil {
 		return nil, err
 	}
-	defer rd.Close()
+	defer func() {
+		if rd != nil {
+			rd.Close()
+		}
+	}()
 	var buf bytes.Buffer
 	if _, err = io.Copy(&buf, rd); err != nil {
 		return nil, err
