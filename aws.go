@@ -50,9 +50,10 @@ func (a *S3) Copy(ctx context.Context, srcKey, dstKey string, options ...CopyOpt
 		return err
 	}
 	input := &s3.CopyObjectInput{
-		Bucket:     aws.String(bucketName),
-		CopySource: aws.String(copySource),
-		Key:        aws.String(dstKey),
+		Bucket:            aws.String(bucketName),
+		CopySource:        aws.String(copySource),
+		Key:               aws.String(dstKey),
+		MetadataDirective: aws.String("COPY"),
 	}
 	if cfg.metaKeysToCopy != nil || cfg.meta != nil {
 		input.SetMetadataDirective("REPLACE")
