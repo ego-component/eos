@@ -87,6 +87,13 @@ func (l *LocalFile) GetAndDecompressAsReader(ctx context.Context, key string) (i
 // Put override the file
 // It will create two files, one for content, one for meta.
 func (l *LocalFile) Put(ctx context.Context, key string, reader io.ReadSeeker, meta map[string]string, options ...PutOptions) error {
+	putOptions := DefaultPutOptions()
+	for _, opt := range options {
+		opt(putOptions)
+	}
+	if putOptions.ifAbsent {
+		return ErrCreateOnlyUnsupported
+	}
 	filename := l.initDir(key)
 	l.l.Lock()
 	l.meta[key] = meta
@@ -101,7 +108,7 @@ func (l *LocalFile) Put(ctx context.Context, key string, reader io.ReadSeeker, m
 }
 
 func (l *LocalFile) PutAndCompress(ctx context.Context, key string, reader io.ReadSeeker, meta map[string]string, options ...PutOptions) error {
-	return l.Put(ctx, key, reader, meta)
+	return l.Put(ctx, key, reader, meta, options...)
 }
 
 func (l *LocalFile) Del(ctx context.Context, key string) error {

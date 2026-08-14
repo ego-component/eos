@@ -8,6 +8,7 @@ type putOptions struct {
 	contentDisposition *string
 	cacheControl       *string
 	expires            *time.Time
+	ifAbsent           bool
 }
 
 type PutOptions func(options *putOptions)
@@ -39,6 +40,16 @@ func PutWithCacheControl(cacheControl string) PutOptions {
 func PutWithExpireTime(expires time.Time) PutOptions {
 	return func(options *putOptions) {
 		options.expires = &expires
+	}
+}
+
+// PutIfAbsent makes the S3 Put atomic create-only by sending
+// If-None-Match: *. Existing callers that do not pass this option retain the
+// overwrite behavior. Backends without an equivalent atomic primitive return
+// ErrCreateOnlyUnsupported.
+func PutIfAbsent() PutOptions {
+	return func(options *putOptions) {
+		options.ifAbsent = true
 	}
 }
 

@@ -256,6 +256,9 @@ func (ossClient *OSS) Put(ctx context.Context, key string, reader io.ReadSeeker,
 	for _, opt := range options {
 		opt(putOptions)
 	}
+	if putOptions.ifAbsent {
+		return ErrCreateOnlyUnsupported
+	}
 
 	ossOptions := make([]oss.Option, 0)
 	if meta != nil {

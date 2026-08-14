@@ -35,6 +35,10 @@ type BucketConfig struct {
 	Region string
 	// Only for s3-like, whether to force path style URLs for S3 objects.
 	S3ForcePathStyle bool
+	// S3CreateOnlySupported enables PutIfAbsent only after the configured
+	// S3-compatible backend has passed the atomic conditional-write probe.
+	// It defaults to false so unknown or legacy backends fail closed.
+	S3CreateOnlySupported bool
 	// Only for s3-like
 	SSL bool
 	// Only for s3-like, set http client timeout.

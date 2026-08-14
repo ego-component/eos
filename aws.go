@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net/http"
 	"strings"
 	"time"
 
 	"github.com/avast/retry-go"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	awsclient "github.com/aws/aws-sdk-go/aws/client"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/golang/snappy"
 )
@@ -271,6 +273,9 @@ func (a *S3) Put(ctx context.Context, key string, reader io.ReadSeeker, meta map
 	for _, opt := range options {
 		opt(putOptions)
 	}
+	if putOptions.ifAbsent && !a.cfg.S3CreateOnlySupported {
+		return ErrCreateOnlyUnsupported
+	}
 	input := &s3.PutObjectInput{
 		Body:        reader,
 		Bucket:      aws.String(bucketName),
@@ -307,17 +312,46 @@ func (a *S3) Put(ctx context.Context, key string, reader io.ReadSeeker, meta map
 		}
 	}
 
-	err = retry.Do(func() error {
-		_, err := a.client.PutObjectWithContext(ctx, input)
+	put := func() error {
+		var err error
+		if putOptions.ifAbsent {
+			request, _ := a.client.PutObjectRequest(input)
+			request.SetContext(ctx)
+			request.Retryer = awsclient.NoOpRetryer{}
+			request.HTTPRequest.Header.Set("If-None-Match", "*")
+			err = request.Send()
+			if isPreconditionFailed(err) {
+				return ErrObjectAlreadyExists
+			}
+		} else {
+			_, err = a.client.PutObjectWithContext(ctx, input)
+		}
 		if err != nil && reader != nil {
 			// Reset the body reader after the request since at this point it's already read
 			// Note that it's safe to ignore the error here since the 0,0 position is always valid
 			_, _ = reader.Seek(0, 0)
 		}
 		return err
-	}, retry.Attempts(3), retry.Delay(1*time.Second))
+	}
+	if putOptions.ifAbsent {
+		return put()
+	}
+	err = retry.Do(put, retry.Attempts(3), retry.Delay(1*time.Second))
 
 	return err
+}
+
+func isPreconditionFailed(err error) bool {
+	if err == nil {
+		return false
+	}
+	if requestFailure, ok := err.(awserr.RequestFailure); ok && requestFailure.StatusCode() == http.StatusPreconditionFailed {
+		return true
+	}
+	if awsErr, ok := err.(awserr.Error); ok {
+		return awsErr.Code() == "PreconditionFailed"
+	}
+	return false
 }
 
 func (a *S3) PutAndCompress(ctx context.Context, key string, reader io.ReadSeeker, meta map[string]string, options ...PutOptions) error {

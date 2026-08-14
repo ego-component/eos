@@ -60,6 +60,14 @@ func WithS3ForcePathStyle(s3ForcePathStyle bool) BuildOption {
 	}
 }
 
+// WithS3CreateOnlySupported enables PutIfAbsent for a backend whose
+// If-None-Match: * behavior has been verified as atomic.
+func WithS3CreateOnlySupported(supported bool) BuildOption {
+	return func(c *Container) {
+		c.config.S3CreateOnlySupported = supported
+	}
+}
+
 func WithSSL(ssl bool) BuildOption {
 	return func(c *Container) {
 		c.config.SSL = ssl

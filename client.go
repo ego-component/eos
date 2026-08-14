@@ -2,6 +2,7 @@ package eos
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -22,6 +23,15 @@ import (
 )
 
 const PackageName = "component.eoss"
+
+var (
+	// ErrObjectAlreadyExists is returned when an atomic create-only Put loses
+	// to an object that already exists.
+	ErrObjectAlreadyExists = errors.New("object already exists")
+	// ErrCreateOnlyUnsupported is returned by storage backends that cannot
+	// provide an atomic create-only write.
+	ErrCreateOnlyUnsupported = errors.New("object storage create-only is unsupported")
+)
 
 // Client object storage client interface
 type Client interface {
