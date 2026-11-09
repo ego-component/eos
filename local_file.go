@@ -4,14 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"go.uber.org/multierr"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
+
+	"go.uber.org/multierr"
 )
+
+var _ Client = (*LocalFile)(nil)
 
 // LocalFile is the implementation based on local files.
 // For desktop APP or test.
@@ -23,6 +28,93 @@ type LocalFile struct {
 	// store in memory
 	// TODO persistent
 	meta map[string]map[string]string
+}
+
+const localFileDefaultMaxKeys = 1000
+
+// ListObjectV2 implements Client.
+// ContinuationToken 为上一页最后一个条目（对象 key 或 CommonPrefix），按字典序继续列举
+func (l *LocalFile) ListObjectV2(ctx context.Context, key string, prefix string, options ...ListObjectV2Option) (*ListObjectV2Result, error) {
+	opts := buildListObjectV2Options(options...)
+	maxKeys := localFileDefaultMaxKeys
+	if opts.maxKeys != nil && *opts.maxKeys > 0 {
+		maxKeys = int(*opts.maxKeys)
+	}
+	var marker string
+	if opts.startAfter != nil {
+		marker = *opts.startAfter
+	}
+	if opts.continuationToken != nil && *opts.continuationToken > marker {
+		marker = *opts.continuationToken
+	}
+	var delimiter string
+	if opts.delimiter != nil {
+		delimiter = *opts.delimiter
+	}
+
+	type entry struct {
+		name string
+		obj  *Object // nil 表示 CommonPrefix
+	}
+	var entries []entry
+	seenPrefixes := make(map[string]bool)
+	err := filepath.WalkDir(l.path, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.Type().IsRegular() {
+			return nil
+		}
+		rel, err := filepath.Rel(l.path, p)
+		if err != nil {
+			return err
+		}
+		objKey := filepath.ToSlash(rel)
+		if !strings.HasPrefix(objKey, prefix) || objKey <= marker {
+			return nil
+		}
+		if delimiter != "" {
+			if idx := strings.Index(objKey[len(prefix):], delimiter); idx >= 0 {
+				commonPrefix := objKey[:len(prefix)+idx+len(delimiter)]
+				// 上一页以该 CommonPrefix 结尾时，不再重复返回
+				if commonPrefix != marker && !seenPrefixes[commonPrefix] {
+					seenPrefixes[commonPrefix] = true
+					entries = append(entries, entry{name: commonPrefix})
+				}
+				return nil
+			}
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		entries = append(entries, entry{name: objKey, obj: &Object{
+			Key:          objKey,
+			Size:         info.Size(),
+			LastModified: info.ModTime(),
+		}})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].name < entries[j].name })
+
+	result := &ListObjectV2Result{}
+	if len(entries) > maxKeys {
+		entries = entries[:maxKeys]
+		token := entries[maxKeys-1].name
+		result.IsTruncated = true
+		result.ContinuationToken = &token
+	}
+	for _, e := range entries {
+		if e.obj != nil {
+			result.Object = append(result.Object, e.obj)
+		} else {
+			result.CommonPrefixes = append(result.CommonPrefixes, e.name)
+		}
+	}
+	return result, nil
 }
 
 func NewLocalFile(path string) (*LocalFile, error) {
