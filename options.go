@@ -132,3 +132,45 @@ type signOptions struct {
 func DefaultSignOptions() *signOptions {
 	return &signOptions{}
 }
+
+type listObjectV2Options struct {
+	continuationToken *string
+	delimiter         *string
+	maxKeys           *int64
+	startAfter        *string
+}
+
+func buildListObjectV2Options(options ...ListObjectV2Option) listObjectV2Options {
+	var opts listObjectV2Options
+	for _, opt := range options {
+		opt(&opts)
+	}
+	return opts
+}
+
+type ListObjectV2Option func(l *listObjectV2Options)
+
+func ListObjectWithContinuationToken(continuationToken *string) ListObjectV2Option {
+	return func(l *listObjectV2Options) {
+		l.continuationToken = continuationToken
+	}
+}
+
+func ListObjectWithDelimiter(delimiter *string) ListObjectV2Option {
+	return func(l *listObjectV2Options) {
+		l.delimiter = delimiter
+	}
+}
+
+func ListObjectWithMaxKeys(maxKeys *int64) ListObjectV2Option {
+	return func(l *listObjectV2Options) {
+		l.maxKeys = maxKeys
+	}
+}
+
+// ListObjectWithStartAfter 从 startAfter 之后（按字典序，不含 startAfter）开始列举
+func ListObjectWithStartAfter(startAfter *string) ListObjectV2Option {
+	return func(l *listObjectV2Options) {
+		l.startAfter = startAfter
+	}
+}

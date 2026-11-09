@@ -448,6 +448,48 @@ func (a *S3) ListObject(ctx context.Context, key string, prefix string, marker s
 	return keys, nil
 }
 
+func (a *S3) ListObjectV2(ctx context.Context, key string, prefix string, options ...ListObjectV2Option) (*ListObjectV2Result, error) {
+	opts := buildListObjectV2Options(options...)
+
+	bucketName, _, err := a.getBucketAndKey(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	input := &s3.ListObjectsV2Input{
+		Bucket:            aws.String(bucketName),
+		ContinuationToken: opts.continuationToken,
+		Delimiter:         opts.delimiter,
+		MaxKeys:           opts.maxKeys,
+		Prefix:            aws.String(a.cfg.Prefix + prefix),
+	}
+	if opts.startAfter != nil {
+		input.StartAfter = aws.String(a.cfg.Prefix + *opts.startAfter)
+	}
+	listRes, err := a.client.ListObjectsV2WithContext(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &ListObjectV2Result{
+		IsTruncated: aws.BoolValue(listRes.IsTruncated),
+	}
+	if result.IsTruncated && aws.StringValue(listRes.NextContinuationToken) != "" {
+		result.ContinuationToken = listRes.NextContinuationToken
+	}
+	for _, p := range listRes.CommonPrefixes {
+		result.CommonPrefixes = append(result.CommonPrefixes, strings.TrimPrefix(aws.StringValue(p.Prefix), a.cfg.Prefix))
+	}
+	for _, c := range listRes.Contents {
+		result.Object = append(result.Object, &Object{
+			Key:          strings.TrimPrefix(aws.StringValue(c.Key), a.cfg.Prefix),
+			Size:         aws.Int64Value(c.Size),
+			ETag:         aws.StringValue(c.ETag),
+			LastModified: aws.TimeValue(c.LastModified),
+		})
+	}
+	return result, nil
+}
+
 func (a *S3) SignURL(ctx context.Context, key string, expired int64, options ...SignOptions) (string, error) {
 	bucketName, key, err := a.getBucketAndKey(ctx, key)
 	if err != nil {

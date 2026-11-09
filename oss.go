@@ -25,6 +25,54 @@ type OSS struct {
 	compressor Compressor
 }
 
+// ListObjectV2 implements Client.
+func (ossClient *OSS) ListObjectV2(ctx context.Context, key string, prefix string, options ...ListObjectV2Option) (*ListObjectV2Result, error) {
+	opts := buildListObjectV2Options(options...)
+
+	bucket, _, err := ossClient.getBucket(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	cfgPrefix := ossClient.cfg.Prefix
+	ossOptions := []oss.Option{oss.Prefix(cfgPrefix + prefix), oss.WithContext(ctx)}
+	if opts.continuationToken != nil {
+		ossOptions = append(ossOptions, oss.ContinuationToken(*opts.continuationToken))
+	}
+	if opts.delimiter != nil {
+		ossOptions = append(ossOptions, oss.Delimiter(*opts.delimiter))
+	}
+	if opts.maxKeys != nil {
+		ossOptions = append(ossOptions, oss.MaxKeys(int(*opts.maxKeys)))
+	}
+	if opts.startAfter != nil {
+		ossOptions = append(ossOptions, oss.StartAfter(cfgPrefix+*opts.startAfter))
+	}
+	listRes, err := bucket.ListObjectsV2(ossOptions...)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &ListObjectV2Result{
+		IsTruncated: listRes.IsTruncated,
+	}
+	if listRes.IsTruncated && listRes.NextContinuationToken != "" {
+		token := listRes.NextContinuationToken
+		result.ContinuationToken = &token
+	}
+	for _, p := range listRes.CommonPrefixes {
+		result.CommonPrefixes = append(result.CommonPrefixes, strings.TrimPrefix(p, cfgPrefix))
+	}
+	for _, o := range listRes.Objects {
+		result.Object = append(result.Object, &Object{
+			Key:          strings.TrimPrefix(o.Key, cfgPrefix),
+			Size:         o.Size,
+			ETag:         o.ETag,
+			LastModified: o.LastModified,
+		})
+	}
+	return result, nil
+}
+
 // 返回带prefix的key
 func (ossClient *OSS) keyWithPrefix(key string) string {
 	return ossClient.cfg.Prefix + key
